@@ -24,6 +24,8 @@ public:
 
     // anti-gel v2 : demandes de dessin suivies par le chien de garde
     void askRepaint (juce::Component& c);
+    void askRepaint (juce::Component& c, juce::Rectangle<int> area);
+    void rebuildContent();                  // nouveau skin
     void notePainted() { lastPaintMs = juce::Time::getMillisecondCounter(); repaintAskedMs = 0; }
 
 private:

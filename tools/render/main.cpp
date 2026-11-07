@@ -123,7 +123,7 @@ int main (int argc, char** argv)
     run (300);
     proc->post (0, spin::cmdScratchMode, 0.0);
     run (2);
-    for (int theme = 0; theme < 5; ++theme)
+    for (int theme = 0; theme < 4; ++theme)
     {
         proc->theme = theme;
         proc->libraryToggle = false;
@@ -135,6 +135,11 @@ int main (int argc, char** argv)
         auto f = out.getChildFile ("ui_theme_" + juce::String (theme) + ".png");
         f.deleteFile();
         if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
+        // gros plan de la platine A en 2x
+        auto zoom = ed->createComponentSnapshot ({ 0, 210, 520, 380 }, true, 2.0f);
+        auto fz = out.getChildFile ("deck_zoom_" + juce::String (theme) + ".png");
+        fz.deleteFile();
+        if (auto os = fz.createOutputStream()) png.writeImageToStream (zoom, *os);
     }
     proc.reset();
     return 0;

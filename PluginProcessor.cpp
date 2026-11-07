@@ -177,6 +177,7 @@ SpinProcessor::SpinProcessor()
         controller = x->getIntAttribute ("controller", 0);
         invertXf = x->getBoolAttribute ("invertXf", false);
         jogRpm = x->getIntAttribute ("jogRpm", 0);
+        theme = juce::jlimit (0, 3, x->getIntAttribute ("skin", 0));
     }
     if (! libraryFolder.isDirectory())
         libraryFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
