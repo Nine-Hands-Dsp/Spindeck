@@ -1,0 +1,44 @@
+name: Build Spindeck (Windows + macOS)
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  win:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Spindeck-VST3-Windows
+          path: build/Spindeck_artefacts/Release/VST3/
+
+  build-macos:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure (binaire universel Intel + Apple Silicon)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Signature locale (ad-hoc) et zip
+        run: |
+          mkdir -p dist
+          for b in build/Spindeck_artefacts/Release/VST3/*.vst3 build/Spindeck_artefacts/Release/AU/*.component build/Spindeck_artefacts/VST3/*.vst3 build/Spindeck_artefacts/AU/*.component; do
+            [ -e "$b" ] || continue
+            xattr -cr "$b"
+            codesign --force --deep --sign - "$b"
+            ditto -c -k --sequesterRsrc --keepParent "$b" "dist/$(basename "$b")-macOS.zip"
+          done
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spindeck-macOS-VST3-AU
+          path: dist/*.zip

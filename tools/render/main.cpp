@@ -1,0 +1,151 @@
+// Spindeck - verification sous Linux : analyse BPM, moteur audio (lecture, cue, scratch MIDI), capture de l'interface.
+#include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_audio_formats/juce_audio_formats.h>
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+#include <cmath>
+#include <iostream>
+
+static void writeTestTrack (const juce::File& f, double bpm, double seconds, double phaseSec, float tone)
+{
+    const double sr = 44100.0;
+    const int n = (int) (sr * seconds);
+    juce::AudioBuffer<float> b (2, n);
+    b.clear();
+    const double beat = 60.0 / bpm;
+    juce::Random rnd (42);
+    for (int i = 0; i < n; ++i)
+    {
+        const double t = i / sr;
+        const double tb = std::fmod (t - phaseSec + 1000 * beat, beat);
+        double x = 0;
+        if (tb < 0.25) x += 0.8 * std::exp (-tb * 18.0) * std::sin (2 * M_PI * (50.0 + 90.0 * std::exp (-tb * 40.0)) * tb);   // grosse caisse
+        const double th = std::fmod (tb + beat * 0.5, beat);
+        if (th < 0.05) x += 0.15 * std::exp (-th * 90.0) * (rnd.nextFloat() * 2 - 1);                                 // charleston
+        x += 0.12 * std::sin (2 * M_PI * tone * t) * (0.6 + 0.4 * std::sin (2 * M_PI * t / (beat * 4)));              // nappe
+        b.setSample (0, i, (float) x); b.setSample (1, i, (float) x);
+    }
+    f.deleteFile();
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::OutputStream> os (f.createOutputStream().release());
+    std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (os.get(), sr, 2, 16, {}, 0));
+    if (w) { os.release(); w->writeFromAudioSampleBuffer (b, 0, n); }
+}
+
+int main (int argc, char** argv)
+{
+    juce::ScopedJuceInitialiser_GUI init;
+    const juce::File out (argc > 1 ? argv[1] : "/tmp/spin");
+    out.createDirectory();
+    const auto music = out.getChildFile ("music");
+    music.createDirectory();
+    writeTestTrack (music.getChildFile ("Nine Hands - Groove 124.wav"), 124.0, 90.0, 0.37, 220.0f);
+    writeTestTrack (music.getChildFile ("Test Artist - Beat 128.wav"), 128.0, 90.0, 0.12, 330.0f);
+    writeTestTrack (music.getChildFile ("Crate Digger - Slow Jam 92.wav"), 92.0, 40.0, 0.0, 165.0f);
+
+    auto proc = std::make_unique<SpinProcessor>();
+    proc->setLibraryFolder (music);
+    proc->prepareToPlay (44100.0, 256);
+    auto* mm = juce::MessageManager::getInstance();
+    for (int i = 0; i < 100 && proc->library.size() < 3; ++i) mm->runDispatchLoopUntil (30);
+    std::cout << "library: " << proc->library.size() << " tracks" << std::endl;
+
+    proc->loadFile (0, music.getChildFile ("Nine Hands - Groove 124.wav"));
+    for (int i = 0; i < 400 && (proc->track (0) == nullptr); ++i) mm->runDispatchLoopUntil (30);
+    proc->loadFile (1, music.getChildFile ("Test Artist - Beat 128.wav"));
+    for (int i = 0; i < 400 && (proc->track (1) == nullptr); ++i) mm->runDispatchLoopUntil (30);
+    for (int d = 0; d < 2; ++d)
+        if (auto t = proc->track (d))
+            std::cout << "deck " << d << ": bpm=" << t->bpm << " firstBeat=" << t->firstBeat / t->sampleRate << " s  cue=" << t->initialCue << std::endl;
+
+    // --- moteur audio : PLAY A + B via les notes de la Discover DJ, puis sync, scratch
+    juce::AudioBuffer<float> buf (2, 256);
+    juce::MidiBuffer midi;
+    double maxAbs = 0, sum = 0; long long cnt = 0; bool bad = false;
+    double worstMs = 0;
+    auto run = [&] (int blocks, std::vector<juce::MidiMessage> msgs = {})
+    {
+        for (int b = 0; b < blocks; ++b)
+        {
+            midi.clear();
+            if (b == 0) for (auto& m : msgs) midi.addEvent (m, 10);
+            const auto t0 = juce::Time::getHighResolutionTicks();
+            proc->processBlock (buf, midi);
+            const double ms = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0) * 1000.0;
+            worstMs = std::max (worstMs, ms);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < 256; ++i)
+                {
+                    const float v = buf.getSample (c, i);
+                    if (! std::isfinite (v)) bad = true;
+                    maxAbs = std::max (maxAbs, (double) std::abs (v)); sum += v * v; ++cnt;
+                }
+            if ((b & 31) == 0) mm->runDispatchLoopUntil (1);
+        }
+    };
+    run (1, { juce::MidiMessage::noteOn (1, 0x4A, (juce::uint8) 127) });            // play A
+    run (400);
+    std::cout << "A playing=" << proc->view[0].playing.load() << " pos=" << proc->view[0].pos.load() / 44100.0 << " s" << std::endl;
+    run (1, { juce::MidiMessage::noteOn (1, 0x4C, (juce::uint8) 127) });            // play B
+    run (200);
+    run (1, { juce::MidiMessage::noteOn (1, 0x47, (juce::uint8) 127), juce::MidiMessage::noteOn (1, 0x47, (juce::uint8) 0) });   // sync B
+    run (100);
+    std::cout << "B rate after sync=" << proc->view[1].rate.load() << " (expected " << 124.0 / 128.0 << ")" << std::endl;
+
+    // scratch : mode scratch, toucher A, ticks avant/arriere
+    run (1, { juce::MidiMessage::noteOn (1, 0x48, (juce::uint8) 127) });
+    run (1, { juce::MidiMessage::noteOn (1, 0x4D, (juce::uint8) 127) });
+    const double p0 = proc->view[0].pos.load();
+    for (int k = 0; k < 40; ++k) run (1, { juce::MidiMessage::controllerEvent (1, 0x19, 6) });
+    run (20);
+    const double p1 = proc->view[0].pos.load();
+    for (int k = 0; k < 40; ++k) run (1, { juce::MidiMessage::controllerEvent (1, 0x19, 0x7A) });
+    run (20);
+    const double p2 = proc->view[0].pos.load();
+    run (1, { juce::MidiMessage::noteOn (1, 0x4D, (juce::uint8) 0) });
+    run (60);
+    std::cout << "scratch: forward " << (p1 - p0) / 44100.0 << " s, back " << (p2 - p1) / 44100.0 << " s, playing after release="
+              << proc->view[0].playing.load() << " scratching=" << proc->view[0].scratching.load() << std::endl;
+
+    // cue A (a l'arret)
+    run (1, { juce::MidiMessage::noteOn (1, 0x3B, (juce::uint8) 127) });
+    run (40);
+    std::cout << "cue while playing -> playing=" << proc->view[0].playing.load() << " pos=" << proc->view[0].pos.load() << " cue=" << proc->view[0].cue.load() << std::endl;
+    run (1, { juce::MidiMessage::noteOn (1, 0x3B, (juce::uint8) 0), juce::MidiMessage::controllerEvent (1, 0x0A, 30) });
+    run (200);
+    mm->runDispatchLoopUntil (50);
+    std::cout << "crossfader param=" << proc->apvts.getRawParameterValue ("xfader")->load() << std::endl;
+    std::cout << "audio: peak=" << maxAbs << " rms=" << std::sqrt (sum / std::max (1LL, cnt)) << " nan=" << bad
+              << " worst block=" << worstMs << " ms (budget 5.8 ms)" << std::endl;
+
+    // --- capture de l'interface (platines en lecture)
+    run (1, { juce::MidiMessage::noteOn (1, 0x4A, (juce::uint8) 127) });
+    run (300);
+    proc->post (0, spin::cmdScratchMode, 0.0);
+    run (2);
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+        for (auto [w, name] : { std::pair<int, const char*> { 1467, "ui_100.png" }, { 880, "ui_default.png" } })
+        {
+            ed->setSize (w, (int) std::lround (w * 900.0 / 1600.0));
+            for (int i = 0; i < 12; ++i) { run (4); mm->runDispatchLoopUntil (40); }
+            const auto t0 = juce::Time::getHighResolutionTicks();
+            auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+            std::cout << name << " paint " << juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0) * 1000.0 << " ms" << std::endl;
+            juce::PNGImageFormat png;
+            auto f = out.getChildFile (name);
+            f.deleteFile();
+            if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
+        }
+        proc->libraryToggle = true;
+        ed->setSize (1467, 825);
+        for (int i = 0; i < 6; ++i) mm->runDispatchLoopUntil (40);
+        auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+        juce::PNGImageFormat png;
+        auto f = out.getChildFile ("ui_library.png");
+        f.deleteFile();
+        if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
+    }
+    proc.reset();
+    return 0;
+}
