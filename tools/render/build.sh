@@ -4,12 +4,15 @@
 set -e
 JUCE=$1; OUT=$2; SRC=$(cd "$(dirname "$0")/../.." && pwd)
 mkdir -p "$OUT/obj" "$OUT/gen"
-python3 - "$SRC/nine_hands_logo_blanc.png" "$OUT/gen" <<'PY'
+python3 - "$OUT/gen" "$SRC/nine_hands_logo_blanc.png" "$SRC/nine_hands_logo_noir.png" <<'PY'
 import sys,os
-data=open(sys.argv[1],'rb').read(); out=sys.argv[2]
-open(os.path.join(out,'BinaryData.h'),'w').write('#pragma once\nnamespace BinaryData {\n extern const char* nine_hands_logo_blanc_png;\n const int nine_hands_logo_blanc_pngSize = %d;\n}\n'%len(data))
-arr=','.join(str(b) for b in data)
-open(os.path.join(out,'BinaryData.cpp'),'w').write('#include "BinaryData.h"\nstatic const unsigned char d[]={%s};\nconst char* BinaryData::nine_hands_logo_blanc_png=(const char*)d;\n'%arr)
+out=sys.argv[1]; h=['#pragma once','namespace BinaryData {']; c=['#include "BinaryData.h"']
+for i,f in enumerate(sys.argv[2:]):
+    n=os.path.basename(f).replace('.','_'); d=open(f,'rb').read()
+    h+=[' extern const char* %s;'%n,' const int %sSize = %d;'%(n,len(d))]
+    c+=['static const unsigned char d%d[]={%s};'%(i,','.join(str(x) for x in d)),'const char* BinaryData::%s=(const char*)d%d;'%(n,i)]
+open(os.path.join(out,'BinaryData.h'),'w').write('\n'.join(h+['}'])+'\n')
+open(os.path.join(out,'BinaryData.cpp'),'w').write('\n'.join(c)+'\n')
 PY
 MODS="juce_core juce_events juce_data_structures juce_graphics juce_gui_basics juce_gui_extra juce_audio_basics juce_audio_formats juce_audio_processors juce_audio_processors_headless juce_dsp"
 DEFS="-DNDEBUG=1 -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJucePlugin_Name=\"Spindeck\" -DJUCE_STANDALONE_APPLICATION=0 \

@@ -108,7 +108,8 @@ public:
     // reglages
     std::atomic<int>  controller { 0 };                        // 0 = ION Discover DJ, 1 = aucun (MIDI Learn seul)
     std::atomic<bool> invertXf { false };
-    std::atomic<int>  jogRpm { 0 };                            // 0 = 33 1/3, 1 = 45
+    std::atomic<int>  jogRpm { 0 };
+    std::atomic<int>  theme { 0 };                             // design de l'interface                            // 0 = 33 1/3, 1 = 45
     std::atomic<int>  learnTarget { -1 };                      // parametre en attente de MIDI Learn
     std::atomic<int>  ccMap[128];                              // CC appris -> parametre (-1)
     int uiScaleIdx = -1;

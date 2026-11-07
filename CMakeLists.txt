@@ -15,7 +15,7 @@ FetchContent_Declare(JUCE
   GIT_SHALLOW ON)
 FetchContent_MakeAvailable(JUCE)
 
-juce_add_binary_data(SpinAssets SOURCES nine_hands_logo_blanc.png)
+juce_add_binary_data(SpinAssets SOURCES nine_hands_logo_blanc.png nine_hands_logo_noir.png)
 
 if(APPLE)
   set(SPIN_FORMATS VST3 AU)

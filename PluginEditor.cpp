@@ -14,22 +14,66 @@ namespace
     constexpr float kDefaultScale = 880.0f / 1467.0f;              // fenetre par defaut 880 x 495 px (hauteur de Ring Think)
     constexpr float kRanges[4] = { 0.04f, 0.08f, 0.16f, 0.50f };
 
+    // themes de l'interface (choix du design)
     namespace col
     {
-        const juce::Colour bg       (0xff0e1013);
-        const juce::Colour panel    (0xff171a1f);
-        const juce::Colour panel2   (0xff1e2229);
-        const juce::Colour line     (0xff2a2f38);
-        const juce::Colour text     (0xffe8ebf0);
-        const juce::Colour dim      (0xff8a919c);
-        const juce::Colour faint    (0xff565d68);
-        const juce::Colour deckA    (0xff36c5f0);
-        const juce::Colour deckB    (0xffff8a3d);
-        const juce::Colour play     (0xff3ddc84);
-        const juce::Colour cue      (0xffffc23d);
-        const juce::Colour red      (0xffff4d5e);
-        const juce::Colour learn    (0xffff3dbb);
+        juce::Colour bg, panel, panel2, line, text, dim, faint, deckA, deckB, play, cue, red, learn (0xffff3dbb);
+        juce::Colour screen, knobTop, knobBottom, capTop, capBottom, padTop, padBottom, padText, vinylTop, vinylBottom;
+        juce::Colour waveLow, waveMid, waveHigh;
+        float radius = 8.0f, glow = 0.18f;
         inline juce::Colour deck (int d) { return d == 0 ? deckA : deckB; }
+        int current = -1;
+
+        void apply (int t)
+        {
+            if (t == current) return;
+            current = t;
+            auto C = [] (juce::uint32 v) { return juce::Colour (v); };
+            switch (t)
+            {
+                default:
+                case 0:   // Midnight : graphite, platines cyan / orange
+                    bg = C (0xff0e1013); panel = C (0xff171a1f); panel2 = C (0xff1e2229); line = C (0xff2a2f38);
+                    text = C (0xffe8ebf0); dim = C (0xff8a919c); faint = C (0xff565d68);
+                    deckA = C (0xff36c5f0); deckB = C (0xffff8a3d); play = C (0xff3ddc84); cue = C (0xffffc23d); red = C (0xffff4d5e);
+                    screen = C (0xff0b0d10); knobTop = C (0xff3a404b); knobBottom = C (0xff15181d); capTop = C (0xff4a515d); capBottom = C (0xff1b1f25);
+                    padTop = C (0xff262b33); padBottom = C (0xff1a1d22); padText = C (0xff000000); vinylTop = C (0xff23262c); vinylBottom = C (0xff07080a);
+                    waveLow = C (0xff2e6bff); waveMid = C (0xff3ddc97); waveHigh = C (0xffe8f4ff); radius = 8; glow = 0.18f;
+                    break;
+                case 1:   // Silver : facade alu claire facon platine vinyle, A rouge / B bleu, ecran LCD sombre
+                    bg = C (0xffc4c8ce); panel = C (0xffe4e6ea); panel2 = C (0xfff2f3f5); line = C (0xffa9afb8);
+                    text = C (0xff15171b); dim = C (0xff4f5661); faint = C (0xff868d98);
+                    deckA = C (0xffd6332f); deckB = C (0xff1f6fd1); play = C (0xff1e9e4a); cue = C (0xffd98a00); red = C (0xffd6332f);
+                    screen = C (0xff16181c); knobTop = C (0xffffffff); knobBottom = C (0xffa7adb6); capTop = C (0xfffbfbfc); capBottom = C (0xffb3b8c0);
+                    padTop = C (0xfff8f9fa); padBottom = C (0xffd5d9de); padText = C (0xffffffff); vinylTop = C (0xff2a2c31); vinylBottom = C (0xff050506);
+                    waveLow = C (0xffff4d3d); waveMid = C (0xffffc23d); waveHigh = C (0xfff4f7ff); radius = 6; glow = 0.10f;
+                    break;
+                case 2:   // Neon Club : nuit violette, magenta / vert acide, halos
+                    bg = C (0xff08050f); panel = C (0xff120b1f); panel2 = C (0xff1b112d); line = C (0xff36245a);
+                    text = C (0xfff5edff); dim = C (0xffa58fcb); faint = C (0xff604c82);
+                    deckA = C (0xffff2bd6); deckB = C (0xff3dff8f); play = C (0xff21e6ff); cue = C (0xffffd23f); red = C (0xffff3b5c);
+                    screen = C (0xff05030a); knobTop = C (0xff3a2a57); knobBottom = C (0xff0f0819); capTop = C (0xff4a3870); capBottom = C (0xff160d26);
+                    padTop = C (0xff221639); padBottom = C (0xff140c23); padText = C (0xff000000); vinylTop = C (0xff241838); vinylBottom = C (0xff050309);
+                    waveLow = C (0xffff2bd6); waveMid = C (0xff8b5cff); waveHigh = C (0xff21e6ff); radius = 14; glow = 0.35f;
+                    break;
+                case 3:   // Amber Mono : noir mat, une seule couleur ambre, angles vifs (sobre, studio)
+                    bg = C (0xff0d0d0d); panel = C (0xff171717); panel2 = C (0xff1f1f1f); line = C (0xff2f2f2f);
+                    text = C (0xfff2e8d5); dim = C (0xff9d9484); faint = C (0xff5a554d);
+                    deckA = C (0xffffb000); deckB = C (0xffe9dfc9); play = C (0xffb8dc6a); cue = C (0xffffb000); red = C (0xffff5a36);
+                    screen = C (0xff080808); knobTop = C (0xff2e2e2e); knobBottom = C (0xff111111); capTop = C (0xff3a3a3a); capBottom = C (0xff141414);
+                    padTop = C (0xff1e1e1e); padBottom = C (0xff181818); padText = C (0xff000000); vinylTop = C (0xff1e1d1b); vinylBottom = C (0xff060606);
+                    waveLow = C (0xffff7a00); waveMid = C (0xffffb000); waveHigh = C (0xfffff1cc); radius = 2; glow = 0.12f;
+                    break;
+                case 4:   // Pro Red / Blue : esprit logiciel DJ classique, A rouge / B bleu, potards chromes
+                    bg = C (0xff14161b); panel = C (0xff22262e); panel2 = C (0xff2c313b); line = C (0xff3c434f);
+                    text = C (0xffffffff); dim = C (0xffa8b0bd); faint = C (0xff656d7a);
+                    deckA = C (0xffe5383b); deckB = C (0xff2d8cff); play = C (0xff2ecc71); cue = C (0xfff5a623); red = C (0xffff4d4d);
+                    screen = C (0xff0c0e12); knobTop = C (0xffe9ecf1); knobBottom = C (0xff6f7782); capTop = C (0xffdfe3e8); capBottom = C (0xff7d8591);
+                    padTop = C (0xff353b46); padBottom = C (0xff262b33); padText = C (0xffffffff); vinylTop = C (0xff25282e); vinylBottom = C (0xff08090b);
+                    waveLow = C (0xff1f5fff); waveMid = C (0xff7ec8ff); waveHigh = C (0xffffffff); radius = 4; glow = 0.22f;
+                    break;
+            }
+        }
     }
 
     juce::Font fnt (float h, bool bold = false)
@@ -109,7 +153,7 @@ public:
 
         // capuchon
         const float kr = r - 7.0f;
-        juce::ColourGradient grad (juce::Colour (0xff3a404b), c.x - kr * 0.6f, c.y - kr * 0.7f, juce::Colour (0xff15181d), c.x + kr * 0.6f, c.y + kr * 0.8f, false);
+        juce::ColourGradient grad (col::knobTop, c.x - kr * 0.6f, c.y - kr * 0.7f, col::knobBottom, c.x + kr * 0.6f, c.y + kr * 0.8f, false);
         g.setGradientFill (grad);
         g.fillEllipse (c.x - kr, c.y - kr, 2 * kr, 2 * kr);
         g.setColour (juce::Colours::black.withAlpha (0.6f));
@@ -117,7 +161,7 @@ public:
         // repere
         const juce::Point<float> p1 (c.x + std::sin (ang) * kr * 0.35f, c.y - std::cos (ang) * kr * 0.35f);
         const juce::Point<float> p2 (c.x + std::sin (ang) * kr * 0.92f, c.y - std::cos (ang) * kr * 0.92f);
-        g.setColour (col::text);
+        g.setColour (col::knobTop.getBrightness() > 0.6f ? juce::Colour (0xff15171b) : col::text);
         g.drawLine ({ p1, p2 }, 2.2f);
     }
 
@@ -147,7 +191,7 @@ public:
             // capuchon
             const float yy = pos;
             auto cap = juce::Rectangle<float> (cx - 15, yy - 11, 30, 22);
-            juce::ColourGradient grad (juce::Colour (0xff4a515d), cap.getX(), cap.getY(), juce::Colour (0xff1b1f25), cap.getX(), cap.getBottom(), false);
+            juce::ColourGradient grad (col::capTop, cap.getX(), cap.getY(), col::capBottom, cap.getX(), cap.getBottom(), false);
             g.setGradientFill (grad); g.fillRoundedRectangle (cap, 3);
             g.setColour (juce::Colours::black); g.drawRoundedRectangle (cap, 3, 1);
             g.setColour (accent); g.fillRect (cap.getX() + 3, yy - 1, cap.getWidth() - 6, 2.0f);
@@ -166,7 +210,7 @@ public:
             g.setColour (learning ? col::learn : col::line);
             g.drawRoundedRectangle (b.getX() - 4, cy - 3, b.getWidth() + 8, 6, 3, 1);
             auto cap = juce::Rectangle<float> (pos - 13, cy - 16, 26, 32);
-            juce::ColourGradient grad (juce::Colour (0xff4a515d), cap.getX(), cap.getY(), juce::Colour (0xff1b1f25), cap.getX(), cap.getBottom(), false);
+            juce::ColourGradient grad (col::capTop, cap.getX(), cap.getY(), col::capBottom, cap.getX(), cap.getBottom(), false);
             g.setGradientFill (grad); g.fillRoundedRectangle (cap, 3);
             g.setColour (juce::Colours::black); g.drawRoundedRectangle (cap, 3, 1);
             g.setColour (col::text); g.fillRect (pos - 1, cap.getY() + 3, 2.0f, cap.getHeight() - 6);
@@ -259,17 +303,17 @@ public:
     {
         painted();
         auto b = getLocalBounds().toFloat().reduced (1.5f);
-        const float rr = 6.0f;
+        const float rr = juce::jmin (col::radius, 10.0f);
         if (lit)
         {
-            g.setColour (colour.withAlpha (0.18f)); g.fillRoundedRectangle (b.expanded (1.5f), rr + 1);
+            g.setColour (colour.withAlpha (col::glow)); g.fillRoundedRectangle (b.expanded (1.5f + col::glow * 8.0f), rr + 1 + col::glow * 8.0f);
             juce::ColourGradient grad (colour.brighter (0.25f), b.getX(), b.getY(), colour.darker (0.25f), b.getX(), b.getBottom(), false);
             g.setGradientFill (grad); g.fillRoundedRectangle (b, rr);
-            g.setColour (juce::Colours::black.withAlpha (0.85f));
+            g.setColour (colour.getPerceivedBrightness() > 0.55f ? juce::Colours::black.withAlpha (0.85f) : juce::Colours::white);
         }
         else
         {
-            juce::ColourGradient grad (juce::Colour (0xff262b33), b.getX(), b.getY(), juce::Colour (0xff1a1d22), b.getX(), b.getBottom(), false);
+            juce::ColourGradient grad (col::padTop, b.getX(), b.getY(), col::padBottom, b.getX(), b.getBottom(), false);
             g.setGradientFill (grad); g.fillRoundedRectangle (b, rr);
             g.setColour (colour.withAlpha (down ? 0.9f : 0.55f)); g.drawRoundedRectangle (b, rr, 1.4f);
             g.setColour (colour);
@@ -324,7 +368,7 @@ public:
             else      bd.setPixelColour (x, y, juce::Colour ((juce::uint8) r, (juce::uint8) g, (juce::uint8) b));
         };
         for (int y = 0; y < h; ++y)
-            for (int x = 0; x < w; ++x) px (x, y, 0x0b, 0x0d, 0x10);
+            for (int x = 0; x < w; ++x) px (x, y, col::screen.getRed(), col::screen.getGreen(), col::screen.getBlue());
 
         if (t != nullptr && ! t->wPeak.empty())
         {
@@ -348,9 +392,9 @@ public:
                 }
                 // couleur par bande : basses bleues, mediums verts, aigus blancs
                 const float s = (float) (lo + mi + hi) + 1.0f;
-                float r = (lo * 0.18f + mi * 0.24f + hi * 0.92f) / s;
-                float gg = (lo * 0.42f + mi * 0.86f + hi * 0.95f) / s;
-                float b = (lo * 1.00f + mi * 0.58f + hi * 1.00f) / s;
+                float r  = (lo * col::waveLow.getFloatRed()   + mi * col::waveMid.getFloatRed()   + hi * col::waveHigh.getFloatRed())   / s;
+                float gg = (lo * col::waveLow.getFloatGreen() + mi * col::waveMid.getFloatGreen() + hi * col::waveHigh.getFloatGreen()) / s;
+                float b  = (lo * col::waveLow.getFloatBlue()  + mi * col::waveMid.getFloatBlue()  + hi * col::waveHigh.getFloatBlue())  / s;
                 const float played = x < w / 2 ? 0.45f : 1.0f;
                 const int a = (int) (pk / 255.0f * half);
                 const int mid = h / 2;
@@ -369,6 +413,7 @@ public:
         painted();
         g.drawImageAt (img, 0, 0);
         const auto t = lastTrack;
+        if (img.isNull()) g.fillAll (col::screen);
         const int w = getWidth(), h = getHeight();
         if (t != nullptr && t->bpm > 0)
         {
@@ -435,7 +480,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         painted();
-        g.fillAll (juce::Colour (0xff0b0d10));
+        g.fillAll (col::screen);
         if (img.isValid()) g.drawImageAt (img, 0, 0);
         if (track != nullptr)
         {
@@ -521,6 +566,7 @@ public:
         g.setColour (accent.withAlpha (scratching ? 0.95f : (playing ? 0.55f : 0.18f)));
         g.drawEllipse (c.x - r - 1, c.y - r - 1, 2 * r + 2, 2 * r + 2, scratching ? 4.0f : 2.5f);
 
+        g.setOpacity (1.0f);                     // l'image prendrait sinon l'alpha de la couleur courante
         if (vinyl.isValid()) g.drawImageAt (vinyl, 0, 0);
 
         // etiquette centrale qui tourne
@@ -532,7 +578,7 @@ public:
         const float sx = std::sin (angle), cy = -std::cos (angle);
         g.setColour (juce::Colours::white);
         g.drawLine (c.x + sx * lr * 0.18f, c.y + cy * lr * 0.18f, c.x + sx * (r - 6), c.y + cy * (r - 6), 3.0f);
-        g.setColour (juce::Colour (0xff0b0d10));
+        g.setColour (col::screen);
         g.fillEllipse (c.x - 4, c.y - 4, 8, 8);
 
         if (scratchMode)
@@ -573,7 +619,7 @@ private:
         juce::Graphics g (vinyl);
         const auto c = getLocalBounds().toFloat().getCentre();
         const float r = juce::jmin ((float) w, (float) h) * 0.5f - 4.0f;
-        juce::ColourGradient grad (juce::Colour (0xff23262c), c.x - r * 0.5f, c.y - r * 0.6f, juce::Colour (0xff07080a), c.x + r * 0.6f, c.y + r * 0.7f, true);
+        juce::ColourGradient grad (col::vinylTop, c.x - r * 0.5f, c.y - r * 0.6f, col::vinylBottom, c.x + r * 0.6f, c.y + r * 0.7f, true);
         g.setGradientFill (grad);
         g.fillEllipse (c.x - r, c.y - r, 2 * r, 2 * r);
         for (float rr = r * 0.40f; rr < r - 3; rr += 3.0f)          // sillons
@@ -742,7 +788,7 @@ public:
         for (int i = 0; i < 4; ++i)
         {
             auto r = juce::Rectangle<float> (b.getX() + i * (w + 6.0f), b.getY(), w, b.getHeight());
-            g.setColour (juce::Colour (0xff0b0d10)); g.fillRoundedRectangle (r, 3);
+            g.setColour (col::screen); g.fillRoundedRectangle (r, 3);
             if (state >= 0 && state / 8 == i)
             {
                 const float k = 1.0f - (state % 8) / 8.0f;
@@ -815,8 +861,8 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto b = getLocalBounds().toFloat();
-        g.setColour (col::panel); g.fillRoundedRectangle (b, 8);
-        g.setColour (drawnHot ? col::deck (deck) : col::line); g.drawRoundedRectangle (b.reduced (0.5f), 8, drawnHot ? 2.0f : 1.0f);
+        g.setColour (col::panel); g.fillRoundedRectangle (b, col::radius);
+        g.setColour (drawnHot ? col::deck (deck) : col::line); g.drawRoundedRectangle (b.reduced (0.5f), col::radius, drawnHot ? 2.0f : 1.0f);
         // legendes du pitch
         g.setColour (col::dim); g.setFont (fnt (12.0f, true));
         g.drawText ("PITCH", pitchLabel, juce::Justification::centred);
@@ -938,8 +984,8 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto b = getLocalBounds().toFloat();
-        g.setColour (col::panel); g.fillRoundedRectangle (b, 8);
-        g.setColour (col::line); g.drawRoundedRectangle (b.reduced (0.5f), 8, 1.0f);
+        g.setColour (col::panel); g.fillRoundedRectangle (b, col::radius);
+        g.setColour (col::line); g.drawRoundedRectangle (b.reduced (0.5f), col::radius, 1.0f);
         g.setFont (fnt (11.0f, true));
         for (const auto& l : labels) { g.setColour (l.c); g.drawText (l.t, l.r, juce::Justification::centred); }
     }
@@ -1057,8 +1103,8 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto b = getLocalBounds().toFloat();
-        g.setColour (col::panel); g.fillRoundedRectangle (b, 8);
-        g.setColour (col::line); g.drawRoundedRectangle (b.reduced (0.5f), 8, 1.0f);
+        g.setColour (col::panel); g.fillRoundedRectangle (b, col::radius);
+        g.setColour (col::line); g.drawRoundedRectangle (b.reduced (0.5f), col::radius, 1.0f);
         g.setColour (col::dim); g.setFont (fnt (13.0f));
         const auto dir = proc.getLibraryFolder();
         g.drawText (dir.getFullPathName(), pathArea, juce::Justification::centredLeft, true);
@@ -1161,7 +1207,9 @@ class TopBar : public Live
 public:
     explicit TopBar (SpinProcessor& p) : proc (p), scratch ("SCRATCH", col::deckA), menu ("MENU", col::dim), libBtn ("LIBRARY", col::dim)
     {
-        logo = juce::ImageCache::getFromMemory (BinaryData::nine_hands_logo_blanc_png, BinaryData::nine_hands_logo_blanc_pngSize);
+        logo = col::bg.getBrightness() > 0.5f   // logo noir sur fond clair, blanc sur fond sombre
+             ? juce::ImageCache::getFromMemory (BinaryData::nine_hands_logo_noir_png, BinaryData::nine_hands_logo_noir_pngSize)
+             : juce::ImageCache::getFromMemory (BinaryData::nine_hands_logo_blanc_png, BinaryData::nine_hands_logo_blanc_pngSize);
         for (auto* c : { &scratch, &menu, &libBtn }) addAndMakeVisible (c);
         scratch.onDown = [this] { proc.post (0, cmdScratchMode, proc.scratchMode.load() ? 0.0 : 1.0); };
         scratch.isLit  = [this] { return proc.scratchMode.load(); };
@@ -1251,7 +1299,7 @@ class SpinContent : public juce::Component, public juce::DragAndDropContainer
 {
 public:
     explicit SpinContent (SpinProcessor& p)
-        : proc (p), top (p), laneA (p, 0), laneB (p, 1), deckA (p, 0), deckB (p, 1), mixer (p), library (p)
+        : proc (p), themeInit ((col::apply (p.theme.load()), 0)), top (p), laneA (p, 0), laneB (p, 1), deckA (p, 0), deckB (p, 1), mixer (p), library (p)
     {
         setLookAndFeel (&look);
         for (auto* c : std::initializer_list<juce::Component*> { &top, &laneA, &laneB, &deckA, &deckB, &mixer, &library })
@@ -1299,6 +1347,7 @@ public:
 
 private:
     SpinProcessor& proc;
+    int themeInit;
     SpinLook look;
     TopBar top;
     WaveLane laneA, laneB;

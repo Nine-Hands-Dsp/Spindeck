@@ -123,26 +123,16 @@ int main (int argc, char** argv)
     run (300);
     proc->post (0, spin::cmdScratchMode, 0.0);
     run (2);
+    for (int theme = 0; theme < 5; ++theme)
     {
+        proc->theme = theme;
+        proc->libraryToggle = false;
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
-        for (auto [w, name] : { std::pair<int, const char*> { 1467, "ui_100.png" }, { 880, "ui_default.png" } })
-        {
-            ed->setSize (w, (int) std::lround (w * 900.0 / 1600.0));
-            for (int i = 0; i < 12; ++i) { run (4); mm->runDispatchLoopUntil (40); }
-            const auto t0 = juce::Time::getHighResolutionTicks();
-            auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
-            std::cout << name << " paint " << juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0) * 1000.0 << " ms" << std::endl;
-            juce::PNGImageFormat png;
-            auto f = out.getChildFile (name);
-            f.deleteFile();
-            if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
-        }
-        proc->libraryToggle = true;
         ed->setSize (1467, 825);
-        for (int i = 0; i < 6; ++i) mm->runDispatchLoopUntil (40);
+        for (int i = 0; i < 12; ++i) { run (4); mm->runDispatchLoopUntil (40); }
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         juce::PNGImageFormat png;
-        auto f = out.getChildFile ("ui_library.png");
+        auto f = out.getChildFile ("ui_theme_" + juce::String (theme) + ".png");
         f.deleteFile();
         if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
     }
