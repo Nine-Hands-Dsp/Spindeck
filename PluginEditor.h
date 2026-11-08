@@ -26,6 +26,7 @@ public:
     void askRepaint (juce::Component& c);
     void askRepaint (juce::Component& c, juce::Rectangle<int> area);
     void rebuildContent();                  // nouveau skin
+    void openColourPicker (int which);      // 0 = platine A, 1 = platine B, 2 = lampe stroboscopique
 
     // plein ecran : la fenetre prend tout l'ecran ou elle se trouve (barre des taches exclue) et suit
     // l'ecran si on la deplace ; elle peut alors descendre sous la taille par defaut sur un petit ecran
@@ -41,6 +42,8 @@ private:
     SpinProcessor& proc;
     std::unique_ptr<SpinContent> content;
     void fitToScreen();
+    juce::Component::SafePointer<juce::Component> pickerLayer;
+    int colourRebuildTicks = 0;
     void normalLimits();
     void* lastPeer = nullptr;
     bool fullScreen = false, fsCanMove = false;

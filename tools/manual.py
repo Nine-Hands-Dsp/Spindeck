@@ -60,7 +60,7 @@ def content(lang):
           ("p", "La Discover DJ n'a pas de carte son : le son sort par l'interface audio de l'ordinateur, sur la sortie master stéréo. "
                 "Ces étapes sont rappelées dans le plugin par <b>MENU > Reaper setup help</b>."),
           ("p", "Au premier lancement, la bibliothèque affiche le dossier <b>Musique</b> de votre session. Choisissez votre dossier de morceaux "
-                "avec l'icône <b>dossier</b> en haut à droite de la bibliothèque : il est mémorisé pour toutes les instances du plugin."),
+                "avec l'icône <b>dossier</b> à côté du titre LIBRARY : il est mémorisé pour toutes les instances du plugin."),
           ("pb",)]
 
     # 3 -------------------------------------------------------------------------------------------------
@@ -95,8 +95,8 @@ def content(lang):
           ("p", "La bande sous l'en-tête montre tout le morceau. La partie déjà jouée est assombrie, le trait jaune marque le point de cue et le trait blanc la position. "
                 "<b>Cliquez ou faites glisser</b> pour vous déplacer dans le morceau ; le saut se fait sans clic audio."),
           ("h2", "Formes d'onde défilantes"),
-          ("p", "En haut de la fenêtre, une forme d'onde par platine défile sous la tête de lecture centrale (10 secondes visibles). Les couleurs montrent le contenu : "
-                "<b>bleu</b> pour les basses, <b>vert</b> pour les médiums, <b>blanc</b> pour les aigus. La grille de temps est tracée par-dessus, avec un trait plus marqué à chaque mesure, "
+          ("p", "En haut de la fenêtre, une forme d'onde par platine défile sous la tête de lecture centrale (10 secondes visibles). Chaque forme d'onde prend la couleur de sa platine "
+                "(celle des boutons LOAD A / B) ; les passages aigus sont plus clairs, les basses plus foncées. La grille de temps est tracée par-dessus, avec un trait plus marqué à chaque mesure, "
                 "et le point de cue est repéré par un triangle jaune. La partie déjà jouée, à gauche, est plus sombre."),
           ("cond", 60),
           ("side", "platter.png", 62, [
@@ -166,14 +166,14 @@ def content(lang):
     # 7 -------------------------------------------------------------------------------------------------
     b += [("h1", "7. Bibliothèque et chargement"),
           ("img", "library.png", 160, None),
-          ("bullets", ["<b>Icône dossier</b> (en haut à droite) : choisit le dossier de musique ; ses sous-dossiers sont aussi parcourus (jusqu'à 20 000 morceaux).",
-                       "<b>Icône flèche circulaire</b> : relit le dossier après avoir ajouté des fichiers. Le nombre de morceaux est affiché à côté.",
+          ("bullets", ["<b>Icône dossier</b> (à côté du titre LIBRARY) : choisit le dossier de musique ; ses sous-dossiers sont aussi parcourus (jusqu'à 20 000 morceaux).",
+                       "<b>Icône flèche circulaire</b> : relit le dossier après avoir ajouté des fichiers. Le nombre de morceaux est affiché juste avant ces icônes.",
                        "<b>Recherche</b> (champ avec la loupe, à gauche) : tapez un ou plusieurs mots ; ils sont cherchés dans l'artiste, le titre et le nom du dossier.",
                        "<b>Colonnes</b> : numéro, artiste, titre, BPM, format, dossier. Le BPM apparaît une fois le morceau analysé, et il est mémorisé pour la prochaine fois.",
                        "<b>LIBRARY</b> (barre du haut, ou bouton bibliothèque de la platine) : bibliothèque en plein écran, formes d'onde gardées en haut."]),
           ("h2", "Pré-écoute"),
           ("p", "La pré-écoute fait entendre un morceau de la bibliothèque sans le charger sur une platine. Le fichier est lu directement depuis le disque, sans analyse, et démarre aussitôt."),
-          ("p", "Le lecteur de pré-écoute occupe le centre de la deuxième ligne, entre la recherche et les boutons A / B."),
+          ("p", "Le lecteur de pré-écoute est centré sur la deuxième ligne, entre la recherche (à gauche) et les boutons A / B (à droite)."),
           ("bullets", ["<b>Bouton rond vert</b> : lance la pré-écoute du morceau sélectionné ; il affiche un carré (arrêt) pendant la lecture.",
                        "<b>Icône lecture</b> au début de chaque ligne : lance la pré-écoute de cette ligne, ou l'arrête si elle joue déjà. La ligne en cours affiche un petit égaliseur vert.",
                        "<b>Suivi de la sélection</b> : pendant une pré-écoute, choisir une autre ligne (souris ou encodeur BROWSE de la platine) passe directement à ce morceau.",
@@ -245,6 +245,13 @@ def content(lang):
           ("h2", "Skins"),
           ("p", "<b>MENU > Skin</b> change l'habillage. Le choix est mémorisé pour toutes les instances."),
           ("img", "skins.png", 168, None),
+          ("h2", "Couleurs et halo"),
+          ("p", "<b>MENU > Colours & glow</b> personnalise l'interface, comme dans les autres plugins NINE HANDS | DSP. Les réglages sont mémorisés pour toutes les ouvertures du plugin."),
+          ("bullets", ["<b>Deck A colour... / Deck B colour...</b> : ouvrent le nuancier (couleurs rapides, rangée MY COLOURS pour garder vos couleurs, teinte, saturation, luminosité, code hexadécimal). "
+                       "La couleur s'applique à tout ce qui appartient à la platine : forme d'onde, bande du morceau, étiquette du vinyle, boutons LOAD / A / B / SYNC, fader de pitch, VU-mètre et cases BEAT. <b>DEFAULT</b> rend la couleur du skin.",
+                       "<b>Strobe light colour...</b> : couleur du reflet de la lampe stroboscopique sur le plateau.",
+                       "<b>Glow</b> : intensité du halo des boutons allumés, de la main du mode scratch et de la lampe : Off, Low, Medium (design d'origine) ou High.",
+                       "<b>Reset colours to the skin</b> : revient aux couleurs du skin choisi."]),
           ("h2", "Contenu du MENU"),
           ("table", [["Entrée", "Rôle"],
                      ["Controller", "ION Discover DJ ou None (MIDI Learn seul)."],
@@ -253,6 +260,7 @@ def content(lang):
                      ["Refresh controller LEDs", "Renvoie l'état des LED à la platine."],
                      ["MIDI Learn", "Assignation par défaut : enregistrer, charger, effacer (voir chapitre 8)."],
                      ["Skin", "Midnight, Neon Club, Amber Mono, Pro Red / Blue."],
+                     ["Colours & glow", "Couleurs des platines et de la lampe, intensité du halo."],
                      ["Choose music folder...", "Même rôle que l'icône dossier de la bibliothèque."],
                      ["Preview output", "Pré-écoute mélangée au master, ou sur les sorties 3-4 du plugin."],
                      ["Full screen", "Plein écran (comme le bouton FULL)."],

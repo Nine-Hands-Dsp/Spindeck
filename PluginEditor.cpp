@@ -2,6 +2,7 @@
 #include "WigaWindowSize.h"
 #include "BinaryData.h"
 #include "NativeWindow.h"
+#include "ColourPicker.h"
 #include <cmath>
 
 using namespace spin;
@@ -22,12 +23,17 @@ namespace
         juce::Colour screen, knobTop, knobBottom, capTop, capBottom, padTop, padBottom, padText, vinylTop, vinylBottom;
         juce::Colour waveLow, waveMid, waveHigh;
         float radius = 8.0f, glow = 0.18f;
+        juce::Colour strobe (0xffff2a2a);                       // lampe stroboscopique
+        float glowScale = 1.0f;                                 // halo : 0 = aucun, 0,5 = faible, 1 = design, 1,6 = fort
+        juce::Colour skinDeckA, skinDeckB;                      // couleurs du skin (avant personnalisation)
+        constexpr juce::uint32 kDefaultStrobe = 0xffff2a2a;
         inline juce::Colour deck (int d) { return d == 0 ? deckA : deckB; }
         int current = -1;
 
+        void applyUser();
+
         void apply (int t)
         {
-            if (t == current) return;
             current = t;
             auto C = [] (juce::uint32 v) { return juce::Colour (v); };
             switch (t)
@@ -66,6 +72,18 @@ namespace
                     waveLow = C (0xff1f5fff); waveMid = C (0xff7ec8ff); waveHigh = C (0xffffffff); radius = 4; glow = 0.22f;
                     break;
             }
+            skinDeckA = deckA; skinDeckB = deckB;
+            applyUser();
+        }
+
+        // couleurs personnalisees (MENU > Colours & glow), communes a toutes les fenetres
+        inline void applyUser()
+        {
+            const juce::String pl ("Spindeck");
+            deckA = juce::Colour (SpinSettings::colourAttr (pl, "deckAColour", skinDeckA.getARGB()));
+            deckB = juce::Colour (SpinSettings::colourAttr (pl, "deckBColour", skinDeckB.getARGB()));
+            strobe = juce::Colour (SpinSettings::colourAttr (pl, "strobeColour", kDefaultStrobe));
+            glowScale = SpinSettings::glowAttr (pl, "glow", 1.0f);
         }
     }
 
@@ -311,7 +329,8 @@ public:
         const float rr = juce::jmin (col::radius, 10.0f);
         if (lit)
         {
-            g.setColour (colour.withAlpha (col::glow)); g.fillRoundedRectangle (b.expanded (1.5f + col::glow * 8.0f), rr + 1 + col::glow * 8.0f);
+            const float gl = col::glow * col::glowScale;
+            if (gl > 0.001f) { g.setColour (colour.withAlpha (juce::jmin (0.6f, gl))); g.fillRoundedRectangle (b.expanded (1.5f + gl * 8.0f), rr + 1 + gl * 8.0f); }
             juce::ColourGradient grad (colour.brighter (0.25f), b.getX(), b.getY(), colour.darker (0.25f), b.getX(), b.getBottom(), false);
             g.setGradientFill (grad); g.fillRoundedRectangle (b, rr);
             g.setColour (colour.getPerceivedBrightness() > 0.55f ? juce::Colours::black.withAlpha (0.85f) : juce::Colours::white);
@@ -395,11 +414,14 @@ public:
                     mi = std::max (mi, (int) t->wMid[(size_t) c]);
                     hi = std::max (hi, (int) t->wHigh[(size_t) c]);
                 }
-                // couleur par bande : basses bleues, mediums verts, aigus blancs
+                // couleur de la platine (comme les boutons LOAD A / B) ; les aigus eclaircissent, les basses foncent un peu
                 const float s = (float) (lo + mi + hi) + 1.0f;
-                float r  = (lo * col::waveLow.getFloatRed()   + mi * col::waveMid.getFloatRed()   + hi * col::waveHigh.getFloatRed())   / s;
-                float gg = (lo * col::waveLow.getFloatGreen() + mi * col::waveMid.getFloatGreen() + hi * col::waveHigh.getFloatGreen()) / s;
-                float b  = (lo * col::waveLow.getFloatBlue()  + mi * col::waveMid.getFloatBlue()  + hi * col::waveHigh.getFloatBlue())  / s;
+                const float bright = (hi * 1.0f + mi * 0.45f) / s;
+                const auto dc = col::deck (deck);
+                const float shade = 0.80f + 0.20f * bright, toWhite = 0.30f * bright;
+                float r  = dc.getFloatRed()   * shade * (1.0f - toWhite) + toWhite;
+                float gg = dc.getFloatGreen() * shade * (1.0f - toWhite) + toWhite;
+                float b  = dc.getFloatBlue()  * shade * (1.0f - toWhite) + toWhite;
                 const float played = x < w / 2 ? 0.45f : 1.0f;
                 const int a = (int) (pk / 255.0f * half);
                 const int mid = h / 2;
@@ -697,15 +719,16 @@ public:
                 ring.setUsingNonZeroWinding (false);                               // anneau : seulement le metal
                 g.reduceClipRegion (ring);
                 const float rr = R * 0.22f;
-                juce::ColourGradient hot (juce::Colour (0xffff3a3a), lamp0.x, lamp0.y,
-                                          juce::Colour (0xffff1010).withAlpha (0.0f), lamp0.x + rr, lamp0.y, true);
-                hot.addColour (0.22, juce::Colour (0xffff3030).withAlpha (0.95f));
-                hot.addColour (0.55, juce::Colour (0xffe81818).withAlpha (0.50f));
+                const float gk = juce::jlimit (0.0f, 1.0f, 0.35f + 0.65f * col::glowScale);   // le reflet reste visible meme sans halo
+                juce::ColourGradient hot (col::strobe.brighter (0.08f).withAlpha (gk), lamp0.x, lamp0.y,
+                                          col::strobe.darker (0.1f).withAlpha (0.0f), lamp0.x + rr, lamp0.y, true);
+                hot.addColour (0.22, col::strobe.withAlpha (0.95f * gk));
+                hot.addColour (0.55, col::strobe.darker (0.15f).withAlpha (0.50f * gk));
                 g.setGradientFill (hot);
                 g.fillEllipse (lamp0.x - rr, lamp0.y - rr, 2 * rr, 2 * rr);
                 // eclat speculaire au centre du reflet
-                juce::ColourGradient spec (juce::Colour (0xfffff0f0), lamp0.x, lamp0.y,
-                                           juce::Colour (0xffff6060).withAlpha (0.0f), lamp0.x + R * 0.09f, lamp0.y, true);
+                juce::ColourGradient spec (col::strobe.interpolatedWith (juce::Colours::white, 0.9f), lamp0.x, lamp0.y,
+                                           col::strobe.brighter (0.4f).withAlpha (0.0f), lamp0.x + R * 0.09f, lamp0.y, true);
                 g.setGradientFill (spec);
                 g.fillEllipse (lamp0.x - R * 0.09f, lamp0.y - R * 0.09f, R * 0.18f, R * 0.18f);
             }
@@ -715,8 +738,8 @@ public:
                 // deux couches : halo large et doux + halo serre et intense
                 for (auto [gr, al] : { std::pair<float, float> { R * 0.18f, 0.22f }, { R * 0.10f, 0.50f } })
                 {
-                    juce::ColourGradient out (juce::Colour (0xffff2020).withAlpha (al), lamp0.x, lamp0.y,
-                                              juce::Colour (0xffff2020).withAlpha (0.0f), lamp0.x + gr, lamp0.y, true);
+                    juce::ColourGradient out (col::strobe.withAlpha (juce::jmin (1.0f, al * col::glowScale)), lamp0.x, lamp0.y,
+                                              col::strobe.withAlpha (0.0f), lamp0.x + gr * (0.6f + 0.4f * juce::jmin (1.6f, col::glowScale)), lamp0.y, true);
                     g.setGradientFill (out);
                     g.fillEllipse (lamp0.x - gr, lamp0.y - gr, 2 * gr, 2 * gr);
                 }
@@ -738,7 +761,7 @@ public:
                     const float dl = lamp.getDistanceFrom ({ x, y }) / lampReach;
                     const float red = std::exp (-dl * dl);
                     const auto base = juce::Colour (0xffeef1f5).withAlpha (0.40f + 0.55f * lit);
-                    g.setColour (base.interpolatedWith (juce::Colour (0xffffb0b0), red));   // points eclaires : rouge tres clair
+                    g.setColour (base.interpolatedWith (col::strobe.interpolatedWith (juce::Colours::white, 0.65f), red));   // points eclaires
                     const float sz = size * (1.0f + 0.5f * red);
                     g.fillRect (x - sz * 0.5f, y - sz * 0.5f, sz, sz);
                 }
@@ -1105,9 +1128,11 @@ private:
     }
 
     // ------------------------------------------------------------ icone du mode scratch (6 propositions)
-    static void glow (juce::Graphics& g, juce::Point<float> c, float r, juce::Colour col)
+    static void glow (juce::Graphics& g, juce::Point<float> c, float r, juce::Colour cc)
     {
-        juce::ColourGradient gl (col.withAlpha (0.45f), c.x, c.y, col.withAlpha (0.0f), c.x + r, c.y, true);
+        if (col::glowScale < 0.01f) return;
+        r *= 0.6f + 0.4f * juce::jmin (1.6f, col::glowScale);
+        juce::ColourGradient gl (cc.withAlpha (0.45f), c.x, c.y, cc.withAlpha (0.0f), c.x + r, c.y, true);
         g.setGradientFill (gl);
         g.fillEllipse (c.x - r, c.y - r, 2 * r, 2 * r);
     }
@@ -1793,7 +1818,7 @@ public:
     }
 
     std::function<void()> onFolder;
-    int preferredHeight() const { return 70; }
+    int preferredHeight() const { return 60; }
 
     void tick()
     {
@@ -1808,6 +1833,7 @@ public:
             drawnState = st; drawnLevel = lv; drawnFile = proc.previewFile(); drawnDir = dir; drawnFocus = search.hasKeyboardFocus (true);
             dirty = true;
         }
+        if (const auto ct = countText(); ct != layoutCount) { layoutCount = ct; resized(); dirty = true; }   // icones collees au compteur
         if (dirty) ask();
     }
 
@@ -1815,28 +1841,34 @@ public:
     {
         hits.clear();
         auto b = getLocalBounds();
-        auto r1 = b.removeFromTop (30);
-        titleTop = r1.removeFromLeft (120);
-        auto right = r1.removeFromRight (360);
-        addHit (right.removeFromRight (34).withSizeKeepingCentre (30, 30), idFolder);
-        right.removeFromRight (6);
-        addHit (right.removeFromRight (34).withSizeKeepingCentre (30, 30), idRescan);
-        right.removeFromRight (12);
-        countArea = right;
-        b.removeFromTop (6);
+        // ligne du haut compacte : LIBRARY, puis compteur, nouveau scan et dossier juste a cote
+        auto r1 = b.removeFromTop (22);
+        titleTop = r1.removeFromLeft ((int) std::ceil (juce::GlyphArrangement::getStringWidth (fnt (15.0f, true), "LIBRARY")) + 14);
+        const auto cnt = countText();
+        countArea = r1.removeFromLeft ((int) std::ceil (juce::GlyphArrangement::getStringWidth (fnt (12.5f), cnt.isEmpty() ? "0000 / 0000 tracks" : cnt)) + 10);
+        addHit (r1.removeFromLeft (26).withSizeKeepingCentre (24, 24), idRescan);
+        r1.removeFromLeft (2);
+        addHit (r1.removeFromLeft (26).withSizeKeepingCentre (24, 24), idFolder);
+        b.removeFromTop (4);
         auto r2 = b.removeFromTop (34);
-        searchPill = r2.removeFromLeft (360);
-        search.setBounds (searchPill.withTrimmedLeft (32).reduced (0, 5));
-        r2.removeFromLeft (16);
-        addHit (r2.removeFromRight (60), idLoadB); r2.removeFromRight (6);
-        addHit (r2.removeFromRight (60), idLoadA); r2.removeFromRight (16);
-        card = r2;
-        auto c = r2.reduced (6, 4);
-        addHit (c.removeFromLeft (26), idPlay);
+        const int barH = 28;                                       // recherche et lecteur moins hauts que les boutons A / B
+        searchPill = r2.withWidth (280).withSizeKeepingCentre (280, barH);
+        search.setBounds (searchPill.withTrimmedLeft (30).reduced (0, 3));
+        const auto boxB = r2.removeFromRight (60); r2.removeFromRight (6);
+        const auto boxA = r2.removeFromRight (60);
+        addHit (boxB, idLoadB);
+        addHit (boxA, idLoadA);
+        // lecteur de pre-ecoute plus etroit, centre sur la largeur de la bibliotheque
+        const int cardW = juce::jmin (640, boxA.getX() - searchPill.getRight() - 32);
+        card = juce::Rectangle<int> (cardW, barH).withCentre ({ getWidth() / 2, r2.getCentreY() });
+        card.setX (juce::jlimit (searchPill.getRight() + 16, boxA.getX() - 16 - cardW, card.getX()));
+        r2 = card;
+        auto c = r2.reduced (4, 3);
+        addHit (c.removeFromLeft (22), idPlay);
         c.removeFromLeft (10);
-        vol.setBounds (c.removeFromRight (26));
-        c.removeFromRight (8);
-        timeArea = c.removeFromRight (96);
+        vol.setBounds (c.removeFromRight (24));
+        c.removeFromRight (6);
+        timeArea = c.removeFromRight (92);
         titleArea = c.removeFromLeft (juce::jmin (300, c.getWidth() / 2));
         c.removeFromLeft (10);
         barArea = c;
@@ -1849,12 +1881,12 @@ public:
         g.setColour (col::text); g.setFont (fnt (15.0f, true));
         g.drawText ("LIBRARY", titleTop, juce::Justification::centredLeft);
         g.setColour (proc.isScanning() ? col::deckA : col::faint); g.setFont (fnt (12.5f));
-        g.drawText (countText(), countArea, juce::Justification::centredRight);
+        g.drawText (countText(), countArea, juce::Justification::centredLeft);
         for (int id : { (int) idRescan, (int) idFolder })
         {
             const auto rr = hitRect (id).toFloat();
             if (hover == id) { g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillEllipse (rr); }
-            icon (g, id == idFolder ? "folder" : "rescan", rr.getCentre(), 17, hover == id ? col::text : col::dim);
+            icon (g, id == idFolder ? "folder" : "rescan", rr.getCentre(), 15, hover == id ? col::text : col::dim);
         }
         searchBox (g, searchPill.toFloat(), true, false);
         auto cr = card.toFloat();
@@ -2083,6 +2115,7 @@ private:
     juce::Slider vol;
     std::vector<Hit> hits;
     juce::Rectangle<int> titleTop, countArea, searchPill, titleArea, barArea, timeArea, card;
+    juce::String layoutCount;
     int hover = -1, pressed = -1, drawnState = -1, drawnLevel = -1;
     bool drawnFocus = false;
     juce::File drawnFile;
@@ -2147,9 +2180,9 @@ public:
 
     void resized() override
     {
-        auto b = getLocalBounds().reduced (10);
+        auto b = getLocalBounds().reduced (10).withTrimmedTop (-4);   // moins d'espace au-dessus de LIBRARY
         bar.setBounds (b.removeFromTop (bar.preferredHeight()));
-        b.removeFromTop (6);
+        b.removeFromTop (4);
         table.setBounds (b);
     }
 
@@ -2677,6 +2710,17 @@ void SpinContent::showMenu()
     const char* skinNames[4] = { "Midnight", "Neon Club", "Amber Mono", "Pro Red / Blue" };
     for (int i = 0; i < 4; ++i) skins.addItem (30 + i, skinNames[i], true, proc.theme.load() == i);
     m.addSubMenu ("Skin", skins);
+    juce::PopupMenu colM, glowM;
+    colM.addItem (80, "Deck A colour...");
+    colM.addItem (81, "Deck B colour...");
+    colM.addItem (82, "Strobe light colour...");
+    const char* glowNames[4] = { "Off", "Low", "Medium (design)", "High" };
+    const float glowVals[4] = { 0.0f, 0.5f, 1.0f, 1.6f };
+    for (int i = 0; i < 4; ++i) glowM.addItem (83 + i, glowNames[i], true, std::abs (col::glowScale - glowVals[i]) < 0.01f);
+    colM.addSubMenu ("Glow", glowM);
+    colM.addSeparator();
+    colM.addItem (87, "Reset colours to the skin");
+    m.addSubMenu ("Colours & glow", colM);
     m.addSeparator();
     m.addItem (16, "Choose music folder...");
     juce::PopupMenu pout;
@@ -2736,6 +2780,18 @@ void SpinContent::showMenu()
                     "4. For the controller LEDs: track Routing > MIDI Hardware Output > ION Discover DJ.\n"
                     "5. For scratching, use an ASIO buffer of 128 or 256 samples.\n\n"
                     "Music folder: FOLDER button above the track list.");
+                break;
+            case 80: case 81: case 82: if (e) e->openColourPicker (r - 80); break;
+            case 83: case 84: case 85: case 86:
+            {
+                const float gv[4] = { 0.0f, 0.5f, 1.0f, 1.6f };
+                SpinSettings::setGlowAttr (SpinProcessor::settingsName(), "glow", gv[r - 83]);
+                if (e) e->rebuildContent();
+                break;
+            }
+            case 87:
+                for (const char* k : { "deckAColour", "deckBColour", "strobeColour" }) SpinSettings::setColourAttr (SpinProcessor::settingsName(), k, 0);
+                if (e) e->rebuildContent();
                 break;
             case 30: case 31: case 32: case 33:
                 p.theme = r - 30;
@@ -2846,9 +2902,45 @@ void SpinEditor::rebuildContent()
         safe->removeChildComponent (safe->content.get());
         safe->content = std::make_unique<SpinContent> (safe->proc);
         safe->addAndMakeVisible (*safe->content);
+        if (safe->pickerLayer != nullptr) safe->pickerLayer->toFront (false);   // le nuancier reste au-dessus
         safe->resized();
         safe->repaint();
     });
+}
+
+// nuancier (meme fenetre que dans Ampire / Octopus) : 0 = platine A, 1 = platine B, 2 = lampe stroboscopique
+void SpinEditor::openColourPicker (int which)
+{
+    static const char* keys[3]   = { "deckAColour", "deckBColour", "strobeColour" };
+    static const char* titles[3] = { "Deck A colour", "Deck B colour", "Strobe light colour" };
+    which = juce::jlimit (0, 2, which);
+    const juce::Colour start = which == 0 ? col::deckA : which == 1 ? col::deckB : col::strobe;
+    const float k = juce::jlimit (0.85f, 1.6f, (float) getWidth() / 1100.0f);
+    auto picker = std::make_unique<WigaColourPicker> (titles[which], start, k, SpinProcessor::settingsName());
+    juce::Component::SafePointer<SpinEditor> sp (this);
+    const juce::String key (keys[which]);
+    picker->onChange = [sp, key] (juce::Colour c)
+    {
+        if (sp == nullptr) return;
+        SpinSettings::setColourAttr (SpinProcessor::settingsName(), key.toRawUTF8(), c.getARGB());
+        sp->colourRebuildTicks = 4;                            // applique quand le curseur s'arrete (~130 ms)
+    };
+    picker->onCommit = [sp, key] (juce::Colour c)
+    {
+        if (sp == nullptr) return;
+        SpinSettings::setColourAttr (SpinProcessor::settingsName(), key.toRawUTF8(), c.getARGB());
+        sp->colourRebuildTicks = 1;
+    };
+    picker->onDefault = [sp, key]
+    {
+        if (sp == nullptr) return;
+        SpinSettings::setColourAttr (SpinProcessor::settingsName(), key.toRawUTF8(), 0);   // couleur du skin
+        sp->colourRebuildTicks = 1;
+    };
+    const auto nearR = juce::Rectangle<int> (getWidth() - 260, 0, 240, (int) std::lround (52.0 * getWidth() / 1600.0));
+    auto layer = std::make_unique<WigaPickerLayer> (std::move (picker), nearR, getLocalBounds());
+    pickerLayer = layer.get();
+    addAndMakeVisible (layer.release());                       // le calque se detruit lui-meme a la fermeture
 }
 
 void SpinEditor::askRepaint (juce::Component& c, juce::Rectangle<int> area)
@@ -2889,6 +2981,7 @@ void SpinEditor::timerCallback()
     const auto now = juce::Time::getMillisecondCounter();
     if ((void*) getPeer() != lastPeer || now - lastRendererCheck >= 1000) useSoftwareRenderer();
     content->tick();
+    if (colourRebuildTicks > 0 && --colourRebuildTicks == 0) rebuildContent();
 
     // plein ecran : placement de la fenetre de l'hote, suivi de l'ecran (deplacement, resolution)
     if (openTicks > 0 && --openTicks == 0 && ! fullScreen && isShowing()) toggleFullScreen();

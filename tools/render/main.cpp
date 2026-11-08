@@ -3,6 +3,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "ColourPicker.h"
 #include <cmath>
 #include <iostream>
 
@@ -336,6 +337,35 @@ int main (int argc, char** argv)
         fl.deleteFile();
         if (auto os = fl.createOutputStream()) png.writeImageToStream (lib, *os);
         proc->stopPreview();
+    }
+    // couleurs personnalisees : defaut, nuancier ouvert, couleurs perso + halo fort, halo coupe
+    {
+        auto setc = [] (const char* k, juce::uint32 v) { SpinSettings::setColourAttr (SpinProcessor::settingsName(), k, v); };
+        for (const char* k : { "deckAColour", "deckBColour", "strobeColour" }) setc (k, 0);
+        SpinSettings::setGlowAttr (SpinProcessor::settingsName(), "glow", 1.0f);
+        if (! proc->view[1].playing.load()) run (1, { juce::MidiMessage::noteOn (1, 0x4C, (juce::uint8) 127) });
+        auto shot = [&] (const char* name, std::function<void (SpinEditor&)> prep)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+            ed->setSize (1600, 900);
+            ed->setVisible (true);
+            if (prep) prep (*dynamic_cast<SpinEditor*> (ed.get()));
+            for (int i = 0; i < 10; ++i) { run (4); mm->runDispatchLoopUntil (35); }
+            auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+            juce::PNGImageFormat png;
+            auto f = out.getChildFile (name);
+            f.deleteFile();
+            if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
+        };
+        shot ("colours_default.png", nullptr);
+        shot ("colours_picker.png", [] (SpinEditor& e) { e.openColourPicker (0); });
+        setc ("deckAColour", 0xff45e070); setc ("deckBColour", 0xffff5fb4); setc ("strobeColour", 0xff4fc3f7);
+        SpinSettings::setGlowAttr (SpinProcessor::settingsName(), "glow", 1.6f);
+        shot ("colours_custom.png", nullptr);
+        SpinSettings::setGlowAttr (SpinProcessor::settingsName(), "glow", 0.0f);
+        shot ("colours_noglow.png", nullptr);
+        for (const char* k : { "deckAColour", "deckBColour", "strobeColour" }) setc (k, 0);
+        SpinSettings::setGlowAttr (SpinProcessor::settingsName(), "glow", 1.0f);
     }
     proc.reset();
     return 0;
