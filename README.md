@@ -26,8 +26,12 @@ Windows and macOS (VST3, plus AU on macOS).
 
 ## Controller mapping (ION Discover DJ)
 
-Taken from the open-source Mixxx mapping of the controller. If the crossfader runs backwards: MENU > Invert crossfader.
-If scratching feels too slow or too fast: MENU > Jog wheel feel (33 1/3 or 45 rpm).
+Taken from the open-source Mixxx mapping of the controller. The Discover DJ sends its crossfader backwards, so it is
+inverted by default (MENU > Invert crossfader to change it).
+Scratch sensitivity of the jog wheels: MENU > Scratch sensitivity (25 / 50 / 75 / 100 %, default 50 %).
+The mouse on the on-screen platter always follows the record 1:1.
+
+Window: 100 % (1600 x 900, default and minimum), 125 %, 150 % (right-click or MENU > Plugin size).
 MENU > Controller > None turns the preset off (MIDI Learn only).
 
 ## Build

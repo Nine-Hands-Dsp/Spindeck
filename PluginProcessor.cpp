@@ -175,8 +175,8 @@ SpinProcessor::SpinProcessor()
         const juce::File dir (x->getStringAttribute ("libraryFolder"));
         if (dir.isDirectory()) libraryFolder = dir;
         controller = x->getIntAttribute ("controller", 0);
-        invertXf = x->getBoolAttribute ("invertXf", false);
-        jogRpm = x->getIntAttribute ("jogRpm", 0);
+        invertXf = x->getBoolAttribute ("invertXf", true);
+        jogSens = juce::jlimit (0, 3, x->getIntAttribute ("jogSens", 1));
         theme = juce::jlimit (0, 3, x->getIntAttribute ("skin", 0));
     }
     if (! libraryFolder.isDirectory())
@@ -288,7 +288,7 @@ void SpinProcessor::applyCmd (const Cmd& c)
 {
     const int di = juce::jlimit (0, 1, c.deck);
     auto& d = deck[di];
-    const double framesPerTick = d.t != nullptr ? d.t->sampleRate * (jogRpm.load() == 0 ? 1.8 : 60.0 / 45.0) / 128.0 : 0.0;
+    const double framesPerTick = d.t != nullptr ? d.t->sampleRate * 1.8 / 128.0 : 0.0;
 
     switch (c.type)
     {
@@ -390,10 +390,12 @@ void SpinProcessor::handleMidi (const juce::MidiMessage& m)
         if (controller.load() != 0) return;
 
         auto rel = [] (int x) { return x >= 0x40 ? x - 0x80 : x; };   // 1..63 horaire, 127..65 anti-horaire
+        const double sens[4] = { 0.25, 0.5, 0.75, 1.0 };
+        const double jogK = sens[juce::jlimit (0, 3, jogSens.load())];
         switch (cc)
         {
-            case dj::jogA:    applyCmd ({ 0, cmdTicks, (double) rel (v) }); break;
-            case dj::jogB:    applyCmd ({ 1, cmdTicks, (double) rel (v) }); break;
+            case dj::jogA:    applyCmd ({ 0, cmdTicks, rel (v) * jogK }); break;
+            case dj::jogB:    applyCmd ({ 1, cmdTicks, rel (v) * jogK }); break;
             case dj::browse:  browseDelta.fetch_add (rel (v)); break;
             case dj::xfader:  setParamFromAudio (pXf, invertXf.load() ? 1.0f - v / 127.0f : v / 127.0f); break;
             case dj::master:  setParamFromAudio (pMaster, v / 127.0f); break;
@@ -533,7 +535,16 @@ void SpinProcessor::renderDecks (float* outL, float* outR, int start, int n)
             // --- lecture
             float l, r;
             d.t->read (d.pos, l, r);
-            l *= d.gainEnv; r *= d.gainEnv;
+            // disque immobile = silence (sinon l'echantillon sous la tete donne une tension continue)
+            const float moving = (d.scratch || std::abs (d.speed) > 1e-5) ? 1.0f : 0.0f;
+            d.motionEnv += (moving - d.motionEnv) * 0.004f;
+            l *= d.gainEnv * d.motionEnv; r *= d.gainEnv * d.motionEnv;
+            // coupe-continu ~5 Hz
+            {
+                const float k = 1.0f - (float) (juce::MathConstants<double>::twoPi * 5.0 / hostRate);
+                const float yl = l - d.dcX[0] + k * d.dcY[0]; d.dcX[0] = l; d.dcY[0] = yl; l = yl;
+                const float yr = r - d.dcX[1] + k * d.dcY[1]; d.dcX[1] = r; d.dcY[1] = yr; r = yr;
+            }
 
             // --- EQ 3 bandes (Linkwitz-Riley 4e ordre : la somme reste a plat)
             const float gl = d.gLow.getNextValue(), gm = d.gMid.getNextValue(), gh = d.gHi.getNextValue();
@@ -624,7 +635,7 @@ void SpinProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
             d.pos = d.cue = d.target = p->initialCue;
             d.speed = d.vel = d.nudge = 0;
             d.playing = d.cueHeld = d.reverse = false;
-            d.fade = 0; d.gainEnv = 1.0f;
+            d.fade = 0; d.gainEnv = 1.0f; d.motionEnv = 0.0f;
             view[di].appliedGen.store (p->id);
         }
 

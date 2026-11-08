@@ -9,9 +9,9 @@ namespace
 {
     // toile de dessin (coordonnees logiques), mise a l'echelle de la fenetre par transformation
     constexpr int kW = 1600, kH = 900;
-    constexpr int kRefW = 1467;                                    // tailles 60 / 75 / 100 % exprimees sur cette largeur
-    const float kScales[3] = { 880.0f / 1467.0f, 0.75f, 1.0f };    // indice 0 = taille par defaut (« 60 % »)
-    constexpr float kDefaultScale = 880.0f / 1467.0f;              // fenetre par defaut 880 x 495 px (hauteur de Ring Think)
+    constexpr int kRefW = 1600;                                    // 100 % = 1600 x 900 (taille par defaut demandee)
+    const float kScales[3] = { 1.0f, 1.25f, 1.5f };                // 100 % (defaut, taille minimale), 125 %, 150 %
+    constexpr float kDefaultScale = 1.0f;
     constexpr float kRanges[4] = { 0.04f, 0.08f, 0.16f, 0.50f };
 
     // themes de l'interface (choix du design)
@@ -71,6 +71,13 @@ namespace
     juce::Font fnt (float h, bool bold = false)
     {
         return juce::Font (juce::FontOptions (h, bold ? juce::Font::bold : juce::Font::plain));
+    }
+
+    // niveau crete -> position du VU (echelle en dB, -60 dB = eteint)
+    float meterPos (float peak)
+    {
+        if (peak < 0.001f) return 0.0f;
+        return juce::jlimit (0.0f, 1.0f, (juce::Decibels::gainToDecibels (peak) + 60.0f) / 60.0f);
     }
 
     float effBpm (const Track* t, float rate) { return t != nullptr && t->bpm > 0 ? t->bpm * rate : 0.0f; }
@@ -1133,7 +1140,8 @@ public:
     {
         const float v = source ? source() : 0.0f;
         level = juce::jmax (v, level * 0.82f);
-        const int px = (int) (std::sqrt (juce::jlimit (0.0f, 1.2f, level)) * getHeight());
+        if (level < 0.0005f) level = 0.0f;
+        const int px = (int) (meterPos (level) * getHeight());
         if (px != lastPx) { lastPx = px; ask(); }
     }
     void paint (juce::Graphics& g) override
@@ -1624,7 +1632,8 @@ public:
         if (on != drawnOn) { drawnOn = on; ask(); }
         level[0] = juce::jmax (proc.masterLevelL.exchange (0.0f), level[0] * 0.82f);
         level[1] = juce::jmax (proc.masterLevelR.exchange (0.0f), level[1] * 0.82f);
-        const int px = (int) (std::sqrt (level[0]) * 100) * 1000 + (int) (std::sqrt (level[1]) * 100);
+        for (auto& l : level) if (l < 0.0005f) l = 0.0f;
+        const int px = (int) (meterPos (level[0]) * 200) * 1000 + (int) (meterPos (level[1]) * 200);
         const int ctl = proc.controller.load();
         if (px != lastPx || ctl != lastCtl) { lastPx = px; lastCtl = ctl; ask(); }
     }
@@ -1654,7 +1663,7 @@ public:
         {
             auto r = vuArea.toFloat().withHeight (6).translated (0, c * 10.0f);
             g.setColour (juce::Colours::black); g.fillRoundedRectangle (r, 2);
-            const float v = juce::jlimit (0.0f, 1.0f, std::sqrt (level[c]));
+            const float v = meterPos (level[c]);
             juce::ColourGradient grad (col::play, r.getX(), 0, col::red, r.getRight(), 0, false);
             grad.addColour (0.75, col::cue);
             g.setGradientFill (grad);
@@ -1767,9 +1776,9 @@ void SpinContent::showMenu()
     ctl.addItem (11, "None (MIDI Learn only)", true, proc.controller.load() == 1);
     m.addSubMenu ("Controller", ctl);
     m.addItem (12, "Invert crossfader (controller)", true, proc.invertXf.load());
-    jog.addItem (13, "33 1/3 rpm", true, proc.jogRpm.load() == 0);
-    jog.addItem (14, "45 rpm (faster scratch)", true, proc.jogRpm.load() == 1);
-    m.addSubMenu ("Jog wheel feel", jog);
+    const char* sens[4] = { "25 %", "50 %  (default)", "75 %", "100 %" };
+    for (int i = 0; i < 4; ++i) jog.addItem (40 + i, sens[i], true, proc.jogSens.load() == i);
+    m.addSubMenu ("Scratch sensitivity (controller)", jog);
     m.addItem (15, "Refresh controller LEDs");
     juce::PopupMenu skins;
     const char* skinNames[4] = { "Midnight", "Neon Club", "Amber Mono", "Pro Red / Blue" };
@@ -1781,7 +1790,7 @@ void SpinContent::showMenu()
 
     const int cur = ed != nullptr ? ed->getScaleIndex() : -1;
     const int def = WigaWindowSize::defaultIndex (SpinProcessor::settingsName(), SpinEditor::numSizes);
-    const char* names[SpinEditor::numSizes] = { "60 %", "75 %", "100 %" };
+    const char* names[SpinEditor::numSizes] = { "100 %", "125 %", "150 %" };
     const int ids[SpinEditor::numSizes] = { 104, 102, 103 };
     for (int i = 0; i < SpinEditor::numSizes; ++i)
     {
@@ -1812,7 +1821,7 @@ void SpinContent::showMenu()
         {
             case 10: case 11: p.controller = r - 10; saveSetting ("controller", r - 10); break;
             case 12: p.invertXf = ! p.invertXf.load(); saveSetting ("invertXf", p.invertXf.load() ? 1 : 0); break;
-            case 13: case 14: p.jogRpm = r - 13; saveSetting ("jogRpm", r - 13); break;
+            case 40: case 41: case 42: case 43: p.jogSens = r - 40; saveSetting ("jogSens", r - 40); break;
             case 15: p.refreshLeds(); break;
             case 16: safe->library.chooseFolder(); break;
             case 17:
@@ -1849,7 +1858,7 @@ SpinEditor::SpinEditor (SpinProcessor& p) : juce::AudioProcessorEditor (&p), pro
     addAndMakeVisible (*content);
     setResizable (true, true);
     const int minW = (int) std::lround (kRefW * kDefaultScale);          // jamais plus petite que la taille par defaut
-    const int maxW = 1920;
+    const int maxW = 2400;
     setResizeLimits (minW, (int) std::lround ((double) minW * kH / kW), maxW, (int) std::lround ((double) maxW * kH / kW));
     getConstrainer()->setFixedAspectRatio ((double) kW / (double) kH);
     const int saved = juce::jlimit (-1, 2, proc.uiScaleIdx);

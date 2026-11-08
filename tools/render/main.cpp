@@ -114,6 +114,12 @@ int main (int argc, char** argv)
     run (1, { juce::MidiMessage::noteOn (1, 0x3B, (juce::uint8) 0), juce::MidiMessage::controllerEvent (1, 0x0A, 30) });
     run (200);
     mm->runDispatchLoopUntil (50);
+    {   // les deux platines a l'arret : le master doit etre silencieux
+        run (1, { juce::MidiMessage::noteOn (1, 0x4C, (juce::uint8) 127) });   // stop B
+        run (300);
+        maxAbs = 0; run (50);
+        std::cout << "stopped decks: master peak=" << maxAbs << " (expected 0)" << std::endl;
+    }
     std::cout << "crossfader param=" << proc->apvts.getRawParameterValue ("xfader")->load() << std::endl;
     std::cout << "audio: peak=" << maxAbs << " rms=" << std::sqrt (sum / std::max (1LL, cnt)) << " nan=" << bad
               << " worst block=" << worstMs << " ms (budget 5.8 ms)" << std::endl;
@@ -128,7 +134,7 @@ int main (int argc, char** argv)
         proc->theme = theme;
         proc->libraryToggle = false;
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
-        ed->setSize (1467, 825);
+        ed->setSize (1600, 900);
         for (int i = 0; i < 12; ++i) { run (4); mm->runDispatchLoopUntil (40); }
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         juce::PNGImageFormat png;
@@ -149,7 +155,7 @@ int main (int argc, char** argv)
     {
         proc->theme = 0;
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
-        ed->setSize (1467, 825);
+        ed->setSize (1600, 900);
         for (int i = 0; i < 8; ++i) { run (4); mm->runDispatchLoopUntil (40); }
         double worst = 0;
         for (int fr = 0; fr < 36; ++fr)

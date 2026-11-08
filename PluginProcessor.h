@@ -107,9 +107,9 @@ public:
 
     // reglages
     std::atomic<int>  controller { 0 };                        // 0 = ION Discover DJ, 1 = aucun (MIDI Learn seul)
-    std::atomic<bool> invertXf { false };
-    std::atomic<int>  jogRpm { 0 };
-    std::atomic<int>  theme { 0 };                             // design de l'interface                            // 0 = 33 1/3, 1 = 45
+    std::atomic<bool> invertXf { true };                       // l'ION Discover DJ envoie son crossfader a l'envers
+    std::atomic<int>  jogSens { 1 };                           // sensibilite du jog de la platine : 25 / 50 / 75 / 100 %
+    std::atomic<int>  theme { 0 };                             // design de l'interface
     std::atomic<int>  learnTarget { -1 };                      // parametre en attente de MIDI Learn
     std::atomic<int>  ccMap[128];                              // CC appris -> parametre (-1)
     int uiScaleIdx = -1;
@@ -157,6 +157,8 @@ private:
         int pitchDir = 0, pitchHold = 0;
         int fade = 0; double fadeTarget = -1; bool fadeStop = false;   // saut sans clic
         float gainEnv = 1.0f;
+        float motionEnv = 0.0f;                                // silence quand le disque est immobile
+        float dcX[2] {}, dcY[2] {};                            // coupe-continu
         juce::dsp::LinkwitzRileyFilter<float> xLow, xHigh;    // 250 Hz / 2,5 kHz
         juce::dsp::StateVariableTPTFilter<float> filt;
         int filtMode = 0;
