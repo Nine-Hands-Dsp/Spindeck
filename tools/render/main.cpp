@@ -63,6 +63,57 @@ int main (int argc, char** argv)
         std::cout << "after delete default: " << d->mappingCount() << " (expected 0)" << std::endl;
     }
 
+    // niveaux : gain unite aux reglages par defaut, faders du controleur en butee = 0 dB, limiteur sans saturation
+    {
+        auto sine = [&] (const juce::File& f, float amp, float hz)
+        {
+            const int n = 44100 * 8; juce::AudioBuffer<float> b (2, n);
+            for (int i = 0; i < n; ++i) { const float v = amp * (float) std::sin (2 * M_PI * hz * i / 44100.0); b.setSample (0, i, v); b.setSample (1, i, v); }
+            f.deleteFile(); juce::WavAudioFormat wav;
+            std::unique_ptr<juce::OutputStream> os (f.createOutputStream().release());
+            std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (os.get(), 44100, 2, 24, {}, 0));
+            if (w) { os.release(); w->writeFromAudioSampleBuffer (b, 0, n); }
+        };
+        const auto lv = out.getChildFile ("levels"); lv.createDirectory();
+        sine (lv.getChildFile ("half.wav"), 0.5f, 441.0f);
+        sine (lv.getChildFile ("hot.wav"), 0.99f, 441.0f);
+        auto measure = [&] (const char* fa, const char* fb, std::vector<juce::MidiMessage> pre) -> float
+        {
+            auto p = std::make_unique<SpinProcessor>();
+            p->prepareToPlay (44100.0, 256);
+            p->loadFile (0, lv.getChildFile (fa));
+            if (fb) p->loadFile (1, lv.getChildFile (fb));
+            auto* m = juce::MessageManager::getInstance();
+            for (int i = 0; i < 400 && (p->track (0) == nullptr || (fb && p->track (1) == nullptr)); ++i) m->runDispatchLoopUntil (20);
+            juce::AudioBuffer<float> bb (2, 256); juce::MidiBuffer mb;
+            for (auto& e : pre) mb.addEvent (e, 0);
+            mb.addEvent (juce::MidiMessage::noteOn (1, 0x4A, (juce::uint8) 127), 1);
+            if (fb) mb.addEvent (juce::MidiMessage::noteOn (1, 0x4C, (juce::uint8) 127), 1);
+            float pk = 0;
+            for (int k = 0; k < 600; ++k)
+            {
+                p->processBlock (bb, mb); mb.clear();
+                if (k > 200) pk = std::max (pk, bb.getMagnitude (0, 0, 256));
+            }
+            return pk;
+        };
+        auto cc = [] (int n, int v) { return juce::MidiMessage::controllerEvent (1, n, v); };
+        std::cout << "levels: half sine default -> " << measure ("half.wav", nullptr, {}) << " (expected 0.5)" << std::endl;
+        std::cout << "levels: half sine, Discover faders+master at max -> "
+                  << measure ("half.wav", nullptr, { cc (0x08, 127), cc (0x17, 127) }) << " (expected 0.5)" << std::endl;
+        std::cout << "levels: 0.99 sine -> " << measure ("hot.wav", nullptr, {}) << " (limited <= 0.966)" << std::endl;
+        std::cout << "levels: two 0.99 sines at centre -> " << measure ("hot.wav", "hot.wav", {}) << " (<= 0.966)" << std::endl;
+        // ancien projet : volume enregistre a 0,8 (0 dB d'avant) -> 1,0 maintenant
+        auto p = std::make_unique<SpinProcessor>();
+        juce::MemoryBlock st; p->getStateInformation (st);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (st.getData(), (int) st.getSize());
+        xml->removeAttribute ("unityFaders");
+        for (auto* c : xml->getChildIterator()) if (c->getStringAttribute ("id") == "volA") c->setAttribute ("value", 0.8);
+        juce::AudioProcessor::copyXmlToBinary (*xml, st);
+        auto q = std::make_unique<SpinProcessor>(); q->setStateInformation (st.getData(), (int) st.getSize());
+        std::cout << "levels: old project volA 0.8 -> " << q->apvts.getRawParameterValue ("volA")->load() << " (expected 1)" << std::endl;
+    }
+
     auto proc = std::make_unique<SpinProcessor>();
     proc->setLibraryFolder (music);
     proc->prepareToPlay (44100.0, 256);
@@ -336,6 +387,25 @@ int main (int argc, char** argv)
         auto fl = out.getChildFile ("libbar_final.png");
         fl.deleteFile();
         if (auto os = fl.createOutputStream()) png.writeImageToStream (lib, *os);
+        // recherche ouverte avec du texte
+        std::function<juce::TextEditor* (juce::Component*)> findTe = [&] (juce::Component* c) -> juce::TextEditor*
+        {
+            if (auto* t = dynamic_cast<juce::TextEditor*> (c)) return t;
+            for (auto* k : c->getChildren()) if (auto* t = findTe (k)) return t;
+            return nullptr;
+        };
+        if (auto* te = findTe (ed.get()))
+        {
+            te->setText ("groove", true);
+            te->getParentComponent()->resized();
+            for (int i = 0; i < 4; ++i) { run (4); mm->runDispatchLoopUntil (35); }
+            auto lib2 = ed->createComponentSnapshot ({ 0, 636, 1600, 264 }, true, 1.25f);
+            auto f2 = out.getChildFile ("libbar_search.png");
+            f2.deleteFile();
+            if (auto os = f2.createOutputStream()) png.writeImageToStream (lib2, *os);
+            te->setText ({}, true);
+            te->getParentComponent()->resized();
+        }
         proc->stopPreview();
     }
     // couleurs personnalisees : defaut, nuancier ouvert, couleurs perso + halo fort, halo coupe

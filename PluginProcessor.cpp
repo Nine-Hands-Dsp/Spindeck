@@ -30,8 +30,8 @@ namespace
         constexpr int volA = 0x08, volB = 0x09, bassA = 0x14, bassB = 0x15, trebleA = 0x10, trebleB = 0x11;
     }
 
-    // volume / master : 0,8 = 0 dB, 1 = +3,9 dB, 0 = silence (courbe quadratique, continue)
-    inline float volGain (float v) { const float x = v / 0.8f; return x * x; }
+    // volume / master : en haut = 0 dB (gain unite, jamais d'amplification), 0 = silence (courbe quadratique)
+    inline float volGain (float v) { const float x = juce::jlimit (0.0f, 1.0f, v); return x * x; }
 
     // EQ DJ : meme pente (6 dB par demi-course) des deux cotes de midi, -26 dB puis coupure franche a gauche, +6 dB a droite
     inline float eqGain (float v)
@@ -136,7 +136,7 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
         l.add (std::make_unique<AudioParameterFloat> (ParameterID { kParamIds[i], 1 }, kParamNames[i],
                                                       NormalisableRange<float> (0.0f, 1.0f), def));
     };
-    knob (pVolA, 0.8f); knob (pVolB, 0.8f);
+    knob (pVolA, 1.0f); knob (pVolB, 1.0f);
     knob (pHiA, 0.5f);  knob (pHiB, 0.5f);
     knob (pMidA, 0.5f); knob (pMidB, 0.5f);
     knob (pLowA, 0.5f); knob (pLowB, 0.5f);
@@ -148,7 +148,7 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
         l.add (std::make_unique<AudioParameterChoice> (ParameterID { kParamIds[i], 1 }, kParamNames[i],
                                                        StringArray { "4 %", "8 %", "16 %", "50 %" }, 1));
     knob (pXf, 0.5f);
-    knob (pMaster, 0.8f);
+    knob (pMaster, 1.0f);
     l.add (std::make_unique<AudioParameterChoice> (ParameterID { kParamIds[pXfCurve], 1 }, kParamNames[pXfCurve],
                                                    StringArray { "Mix", "Scratch" }, 0));
     return l;
@@ -233,6 +233,7 @@ void SpinProcessor::prepareToPlay (double sr, int block)
     }
     gMaster.reset (sr, 0.02);
     gMaster.setCurrentAndTargetValue (volGain (paramValue (pMaster)));
+    limGain = 1.0f;
     pitchRepeatDelay = (int) (sr * 0.35);
     pitchRepeatEvery = (int) (sr * 0.05);
     pvScratch.setSize (2, 512 * 5 + 16);                      // jusqu'a 192 kHz lu a 44,1 kHz, par tranches de 512
@@ -592,17 +593,21 @@ void SpinProcessor::renderDecks (float* outL, float* outR, int start, int n)
         }
     }
 
-    // master + limiteur doux (jamais d'ecretage dur)
+    // master + limiteur de crete transparent : en dessous de -0,3 dBFS le signal sort tel quel (gain unite) ;
+    // au-dessus, le gain baisse instantanement puis remonte en ~150 ms (pas de mise en forme d'onde = pas de saturation)
+    constexpr float thr = 0.966f;
+    const float rel = 1.0f - std::exp (-1.0f / (0.15f * (float) hostRate));
     for (int i = 0; i < n; ++i)
     {
         const float g = gMaster.getNextValue();
-        for (float* o : { outL, outR })
-        {
-            float x = o[start + i] * g;
-            const float ax = std::abs (x);
-            if (ax > 0.9f) x = std::copysign (0.9f + 0.1f * std::tanh ((ax - 0.9f) / 0.1f), x);
-            o[start + i] = x;
-        }
+        float l = outL[start + i] * g, r = outR[start + i] * g;
+        const float pk = std::max (std::abs (l), std::abs (r));
+        const float need = pk > thr ? thr / pk : 1.0f;
+        limGain = need < limGain ? need : limGain + (1.0f - limGain) * rel;
+        if (limGain > need) limGain = need;
+        l *= limGain; r *= limGain;
+        outL[start + i] = juce::jlimit (-1.0f, 1.0f, l);
+        outR[start + i] = juce::jlimit (-1.0f, 1.0f, r);
     }
 }
 
@@ -1096,7 +1101,8 @@ void SpinProcessor::getStateInformation (juce::MemoryBlock& dest)
     xml->setAttribute ("uiFullScreen", uiFullScreen);
     xml->setAttribute ("scratchMode", scratchMode.load());
     xml->setAttribute ("midiLearn", mappingToString());
-    xml->setAttribute ("midiLearnProject", true);          // ce projet a ses propres assignations (meme vides)
+    xml->setAttribute ("midiLearnProject", true);
+    xml->setAttribute ("unityFaders", true);          // ce projet a ses propres assignations (meme vides)
     copyXmlToBinary (*xml, dest);
 }
 
@@ -1105,6 +1111,11 @@ void SpinProcessor::setStateInformation (const void* data, int size)
     std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, size));
     if (xml == nullptr || ! xml->hasTagName (apvts.state.getType())) return;
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    // anciens projets : le haut des volumes valait +3,9 dB et le 0 dB etait a 0,8 -> on garde le meme niveau (plafonne a 0 dB)
+    if (! xml->getBoolAttribute ("unityFaders", false))
+        for (int i : { (int) pVolA, (int) pVolB, (int) pMaster })
+            if (auto* prm = apvts.getParameter (kParamIds[i]))
+                prm->setValueNotifyingHost (juce::jmin (1.0f, prm->getValue() / 0.8f));
     uiScaleIdx = xml->getIntAttribute ("uiScale", -1);
     uiFullScreen = xml->getBoolAttribute ("uiFullScreen", false);
     scratchMode = xml->getBoolAttribute ("scratchMode", false);

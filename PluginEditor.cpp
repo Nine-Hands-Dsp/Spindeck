@@ -1792,8 +1792,11 @@ public:
         search.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
         search.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
         search.setColour (juce::TextEditor::textColourId, col::text);
-        search.onTextChange = [this] { proc.setFilter (search.getText()); ask(); };
-        search.onFocusLost = [this] { ask(); };
+        search.setCaretVisible (false);                           // pas de curseur clignotant tant qu'on n'a rien tape
+        search.onTextChange = [this] { search.setCaretVisible (search.getText().isNotEmpty()); proc.setFilter (search.getText()); ask(); };
+        search.onFocusLost = [this] { if (search.getText().isEmpty()) { searchOpen = false; resized(); } ask(); };
+        search.onEscapeKey = [this] { search.clear(); proc.setFilter ({}); searchOpen = false; resized(); unfocusAllComponents(); ask(); };
+        search.onReturnKey = [this] { unfocusAllComponents(); };
         addAndMakeVisible (search);
 
         vol.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -1818,7 +1821,7 @@ public:
     }
 
     std::function<void()> onFolder;
-    int preferredHeight() const { return 60; }
+    int preferredHeight() const { return 46; }
 
     void tick()
     {
@@ -1833,29 +1836,34 @@ public:
             drawnState = st; drawnLevel = lv; drawnFile = proc.previewFile(); drawnDir = dir; drawnFocus = search.hasKeyboardFocus (true);
             dirty = true;
         }
-        if (const auto ct = countText(); ct != layoutCount) { layoutCount = ct; resized(); dirty = true; }   // icones collees au compteur
+        if (const auto ct = countText(); ct != layoutCount) { layoutCount = ct; resized(); dirty = true; }   // largeur du compteur suit le texte
         if (dirty) ask();
     }
 
     void resized() override
     {
         hits.clear();
-        auto b = getLocalBounds();
-        // ligne du haut compacte : LIBRARY, puis compteur, nouveau scan et dossier juste a cote
-        auto r1 = b.removeFromTop (22);
-        titleTop = r1.removeFromLeft ((int) std::ceil (juce::GlyphArrangement::getStringWidth (fnt (15.0f, true), "LIBRARY")) + 14);
+        // une seule ligne, centree verticalement dans le bandeau :
+        // LIBRARY, nouveau scan, dossier, nombre de morceaux, loupe | pre-ecoute (centree) | A  B
+        auto r2 = getLocalBounds();
+        const int barH = 28;
+        titleTop = r2.removeFromLeft ((int) std::ceil (juce::GlyphArrangement::getStringWidth (fnt (15.0f, true), "LIBRARY")) + 12);
+        addHit (r2.removeFromLeft (26).withSizeKeepingCentre (24, 24), idRescan);
+        r2.removeFromLeft (2);
+        addHit (r2.removeFromLeft (26).withSizeKeepingCentre (24, 24), idFolder);
+        r2.removeFromLeft (8);
         const auto cnt = countText();
-        countArea = r1.removeFromLeft ((int) std::ceil (juce::GlyphArrangement::getStringWidth (fnt (12.5f), cnt.isEmpty() ? "0000 / 0000 tracks" : cnt)) + 10);
-        addHit (r1.removeFromLeft (26).withSizeKeepingCentre (24, 24), idRescan);
-        r1.removeFromLeft (2);
-        addHit (r1.removeFromLeft (26).withSizeKeepingCentre (24, 24), idFolder);
-        b.removeFromTop (4);
-        auto r2 = b.removeFromTop (34);
-        const int barH = 28;                                       // recherche et lecteur moins hauts que les boutons A / B
-        searchPill = r2.withWidth (280).withSizeKeepingCentre (280, barH);
-        search.setBounds (searchPill.withTrimmedLeft (30).reduced (0, 3));
-        const auto boxB = r2.removeFromRight (60); r2.removeFromRight (6);
-        const auto boxA = r2.removeFromRight (60);
+        countArea = r2.removeFromLeft ((int) std::ceil (juce::GlyphArrangement::getStringWidth (fnt (12.5f), cnt.isEmpty() ? "0000 / 0000 tracks" : cnt)) + 8);
+        r2.removeFromLeft (4);
+        // recherche : juste la loupe ; un clic l'ouvre en champ de saisie, elle se referme vide quand on clique ailleurs
+        const bool open = searchOpen || search.getText().isNotEmpty();
+        searchPill = r2.withWidth (open ? 230 : barH).withSizeKeepingCentre (open ? 230 : barH, barH);
+        r2.removeFromLeft (searchPill.getWidth());
+        if (! open) addHit (searchPill, idSearch);
+        search.setVisible (open);
+        search.setBounds (searchPill.withTrimmedLeft (30).withTrimmedRight (10).reduced (0, 3));
+        const auto boxB = r2.removeFromRight (60).withSizeKeepingCentre (60, barH); r2.removeFromRight (6);
+        const auto boxA = r2.removeFromRight (60).withSizeKeepingCentre (60, barH);
         addHit (boxB, idLoadB);
         addHit (boxA, idLoadA);
         // lecteur de pre-ecoute plus etroit, centre sur la largeur de la bibliotheque
@@ -1888,7 +1896,14 @@ public:
             if (hover == id) { g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillEllipse (rr); }
             icon (g, id == idFolder ? "folder" : "rescan", rr.getCentre(), 15, hover == id ? col::text : col::dim);
         }
-        searchBox (g, searchPill.toFloat(), true, false);
+        if (search.isVisible()) searchBox (g, searchPill.toFloat(), true, false);
+        else
+        {
+            const auto rr = searchPill.toFloat();
+            g.setColour (col::screen); g.fillEllipse (rr);
+            g.setColour (hover == idSearch ? col::dim : col::line); g.drawEllipse (rr.reduced (0.5f), 1.0f);
+            icon (g, "search", rr.getCentre(), 14, hover == idSearch ? col::text : col::dim);
+        }
         auto cr = card.toFloat();
         g.setColour (col::screen); g.fillRoundedRectangle (cr, cr.getHeight() * 0.5f);
         g.setColour (col::line); g.drawRoundedRectangle (cr.reduced (0.5f), cr.getHeight() * 0.5f, 1);
@@ -1918,6 +1933,7 @@ public:
             {
                 case idFolder: if (onFolder) onFolder(); break;
                 case idRescan: proc.rescanLibrary(); break;
+                case idSearch: searchOpen = true; resized(); search.grabKeyboardFocus(); break;
                 case idLoadA:  proc.loadSelected (0); break;
                 case idLoadB:  proc.loadSelected (1); break;
                 case idPlay:   proc.togglePreviewSelected(); break;
@@ -1928,7 +1944,7 @@ public:
     }
 
 private:
-    enum { idFolder, idRescan, idLoadA, idLoadB, idPlay, idSeek };
+    enum { idFolder, idRescan, idLoadA, idLoadB, idPlay, idSeek, idSearch };
     struct Hit { juce::Rectangle<int> r; int id; };
     void addHit (juce::Rectangle<int> r, int id) { hits.push_back ({ r, id }); }
     int hitAt (juce::Point<int> p) const { for (auto it = hits.rbegin(); it != hits.rend(); ++it) if (it->r.contains (p)) return it->id; return -1; }
@@ -2022,9 +2038,9 @@ private:
         {
             const float rr = pill ? r.getHeight() * 0.5f : 6.0f;
             g.setColour (col::screen); g.fillRoundedRectangle (r, rr);
-            g.setColour (foc ? col::deckA.withAlpha (0.8f) : col::line); g.drawRoundedRectangle (r.reduced (0.5f), rr, foc ? 1.5f : 1.0f);
+            g.setColour (col::line); g.drawRoundedRectangle (r.reduced (0.5f), rr, 1.0f);   // meme lucarne que la pre-ecoute, sans couleur
         }
-        icon (g, "search", { r.getX() + 17, r.getCentreY() }, 15, foc ? col::deckA : col::faint);
+        icon (g, "search", { r.getX() + 17, r.getCentreY() }, 15, foc ? col::dim : col::faint);
     }
 
     void loadPill (juce::Graphics& g, int id, bool solid, bool compact) const
@@ -2115,6 +2131,7 @@ private:
     juce::Slider vol;
     std::vector<Hit> hits;
     juce::Rectangle<int> titleTop, countArea, searchPill, titleArea, barArea, timeArea, card;
+    bool searchOpen = false;
     juce::String layoutCount;
     int hover = -1, pressed = -1, drawnState = -1, drawnLevel = -1;
     bool drawnFocus = false;
@@ -2180,10 +2197,11 @@ public:
 
     void resized() override
     {
-        auto b = getLocalBounds().reduced (10).withTrimmedTop (-4);   // moins d'espace au-dessus de LIBRARY
+        // bandeau fin : ses elements sont centres entre la bordure du haut et la liste
+        auto b = getLocalBounds().reduced (12, 0);
         bar.setBounds (b.removeFromTop (bar.preferredHeight()));
-        b.removeFromTop (4);
-        table.setBounds (b);
+        b.removeFromBottom (10);
+        table.setBounds (b.withTrimmedLeft (-2).withTrimmedRight (-2));
     }
 
 private:

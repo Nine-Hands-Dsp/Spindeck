@@ -193,6 +193,7 @@ private:
     std::atomic<int> requestedGen[2] { { 0 }, { 0 } };
     double hostRate = 44100.0;
     juce::SmoothedValue<float> gMaster;
+    float limGain = 1.0f;
     int ledState[16] {};
     std::atomic<bool> ledRefresh { true };
     int pitchRepeatDelay = 0, pitchRepeatEvery = 0;
