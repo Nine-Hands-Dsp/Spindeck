@@ -2246,6 +2246,14 @@ void SpinContent::showMenu()
     for (int i = 0; i < 4; ++i) jog.addItem (40 + i, sens[i], true, proc.jogSens.load() == i);
     m.addSubMenu ("Scratch sensitivity (controller)", jog);
     m.addItem (15, "Refresh controller LEDs");
+    juce::PopupMenu ml;
+    const int nCur = proc.mappingCount(), nDef = proc.defaultMappingCount();
+    ml.addSectionHeader ("This project: " + juce::String (nCur) + " assignment(s)  |  default: " + juce::String (nDef));
+    ml.addItem (70, "Save as default (recalled in every new project)", nCur > 0);
+    ml.addItem (71, "Load default", nDef > 0);
+    ml.addItem (72, "Clear (this project)", nCur > 0);
+    ml.addItem (73, "Delete default", nDef > 0);
+    m.addSubMenu ("MIDI Learn", ml);
     juce::PopupMenu skins;
     const char* skinNames[4] = { "Midnight", "Neon Club", "Amber Mono", "Pro Red / Blue" };
     for (int i = 0; i < 4; ++i) skins.addItem (30 + i, skinNames[i], true, proc.theme.load() == i);
@@ -2294,6 +2302,10 @@ void SpinContent::showMenu()
             case 12: p.invertXf = ! p.invertXf.load(); saveSetting ("invertXf", p.invertXf.load() ? 1 : 0); break;
             case 40: case 41: case 42: case 43: p.jogSens = r - 40; saveSetting ("jogSens", r - 40); break;
             case 50: case 51: p.previewOutput = r - 50; saveSetting ("previewOutput", r - 50); break;
+            case 70: p.saveDefaultMapping(); break;
+            case 71: p.loadDefaultMapping(); break;
+            case 72: for (auto& c : p.ccMap) c = -1; break;
+            case 73: p.clearDefaultMapping(); break;
             case 60: if (e) e->toggleFullScreen(); break;
             case 15: p.refreshLeds(); break;
             case 16: safe->library.chooseFolder(); break;

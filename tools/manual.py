@@ -216,7 +216,19 @@ def content(lang):
           ("p", "Les LED PLAY, CUE, SYNC, REV et SCRATCH de la platine suivent le logiciel, à condition d'avoir activé la sortie MIDI de la piste vers la platine (chapitre 2)."),
           ("h2", "Autres contrôleurs MIDI"),
           ("p", "Clic droit sur un potard ou un fader > <b>MIDI Learn</b>, puis bougez la commande voulue sur votre contrôleur : elle est assignée. "
-                "Aucun CC n'est assigné par défaut. Les assignations sont enregistrées avec le projet."),
+                "Aucun CC n'est assigné d'usine. Les assignations sont enregistrées avec le projet."),
+          ("h2", "MIDI Learn par défaut"),
+          ("p", "Pour retrouver vos assignations dans tous vos projets sans les refaire, enregistrez-les comme assignation par défaut : "
+                "<b>MENU > MIDI Learn > Save as default</b>. Chaque nouvelle ouverture de Spindeck, dans n'importe quel projet, rappelle alors ces assignations. "
+                "Pour changer l'assignation par défaut, refaites vos MIDI Learn puis enregistrez à nouveau."),
+          ("table", [["Entrée du menu MIDI Learn", "Rôle"],
+                     ["Save as default", "Enregistre les assignations actuelles comme assignation par défaut."],
+                     ["Load default", "Remplace les assignations du projet par l'assignation par défaut."],
+                     ["Clear (this project)", "Efface les assignations de ce projet (l'assignation par défaut est conservée)."],
+                     ["Delete default", "Supprime l'assignation par défaut : les nouvelles ouvertures repartent sans assignation."]],
+           [52, None]),
+          ("p", "Un projet déjà enregistré garde ses propres assignations : il n'est pas modifié par un nouveau réglage par défaut. "
+                "L'en-tête du menu indique le nombre d'assignations du projet et de l'assignation par défaut."),
           ("pb",)]
 
     # 9 -------------------------------------------------------------------------------------------------
@@ -239,6 +251,7 @@ def content(lang):
                      ["Invert crossfader (controller)", "Inverse le crossfader de la platine (coché par défaut)."],
                      ["Scratch sensitivity (controller)", "Sensibilité des jog wheels : 25 / 50 / 75 / 100 %."],
                      ["Refresh controller LEDs", "Renvoie l'état des LED à la platine."],
+                     ["MIDI Learn", "Assignation par défaut : enregistrer, charger, effacer (voir chapitre 8)."],
                      ["Skin", "Midnight, Neon Club, Amber Mono, Pro Red / Blue."],
                      ["Choose music folder...", "Même rôle que le bouton FOLDER."],
                      ["Preview output", "Pré-écoute mélangée au master, ou sur les sorties 3-4 du plugin."],

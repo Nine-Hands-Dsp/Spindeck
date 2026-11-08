@@ -34,6 +34,7 @@ The mouse on the on-screen platter always follows the record 1:1.
 Window: 100 % (1600 x 900, default and minimum), 125 %, 150 % (right-click or MENU > Plugin size).
 FULL button (or MENU > Full screen): the window fills the screen it is on (taskbar excluded), follows it when moved to another screen, and can go below 100 % on a small screen.
 MENU > Controller > None turns the preset off (MIDI Learn only).
+MENU > MIDI Learn > Save as default: the current MIDI Learn assignments are recalled every time Spindeck is opened in a new project (saved projects keep their own).
 
 ## Build
 

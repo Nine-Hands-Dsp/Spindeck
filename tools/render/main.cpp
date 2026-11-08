@@ -43,6 +43,25 @@ int main (int argc, char** argv)
     writeTestTrack (music.getChildFile ("Test Artist - Beat 128.wav"), 128.0, 90.0, 0.12, 330.0f);
     writeTestTrack (music.getChildFile ("Crate Digger - Slow Jam 92.wav"), 92.0, 40.0, 0.0, 165.0f);
 
+    // MIDI Learn par defaut : sauvegarde, rappel dans une nouvelle instance, priorite au projet
+    {
+        auto a = std::make_unique<SpinProcessor>();
+        for (auto& c : a->ccMap) c = -1;
+        a->ccMap[21] = spin::pXf; a->ccMap[22] = spin::pVolA;
+        a->saveDefaultMapping();
+        auto b = std::make_unique<SpinProcessor>();
+        std::cout << "default midi learn: new instance has " << b->mappingCount() << " (expected 2), cc21->" << b->ccMap[21].load() << std::endl;
+        juce::MemoryBlock st;
+        b->ccMap[22] = -1; b->ccMap[30] = spin::pMaster;               // le projet a ses propres assignations
+        b->getStateInformation (st);
+        auto c = std::make_unique<SpinProcessor>();
+        c->setStateInformation (st.getData(), (int) st.getSize());
+        std::cout << "project mapping wins: " << c->mappingToString() << std::endl;
+        a->clearDefaultMapping();
+        auto d = std::make_unique<SpinProcessor>();
+        std::cout << "after delete default: " << d->mappingCount() << " (expected 0)" << std::endl;
+    }
+
     auto proc = std::make_unique<SpinProcessor>();
     proc->setLibraryFolder (music);
     proc->prepareToPlay (44100.0, 256);

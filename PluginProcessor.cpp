@@ -181,6 +181,8 @@ SpinProcessor::SpinProcessor()
         previewOutput = juce::jlimit (0, 1, x->getIntAttribute ("previewOutput", 0));
         previewVolume = (float) juce::jlimit (0.0, 1.0, x->getDoubleAttribute ("previewVolume", 0.7));
         theme = juce::jlimit (0, 3, x->getIntAttribute ("skin", 0));
+        // MIDI Learn par defaut : rappele a chaque nouvelle ouverture du plugin, dans n'importe quel projet
+        mappingFromString (x->getStringAttribute ("defaultMidiLearn"));
     }
     if (! libraryFolder.isDirectory())
         libraryFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
@@ -896,6 +898,72 @@ void SpinProcessor::saveLibraryCache()
 }
 
 //==============================================================================
+// MIDI Learn : texte "cc:idParametre;..." (projet et assignation par defaut)
+juce::String SpinProcessor::mappingToString() const
+{
+    juce::String map;
+    for (int cc = 0; cc < 128; ++cc)
+        if (const int p = ccMap[cc].load(); p >= 0 && p < numParams) map << cc << ":" << kParamIds[p] << ";";
+    return map;
+}
+
+void SpinProcessor::mappingFromString (const juce::String& text)
+{
+    for (auto& c : ccMap) c = -1;
+    juce::StringArray pairs;
+    pairs.addTokens (text, ";", "");
+    for (const auto& p : pairs)
+    {
+        const int cc = p.upToFirstOccurrenceOf (":", false, false).getIntValue();
+        const auto id = p.fromFirstOccurrenceOf (":", false, false);
+        for (int i = 0; i < numParams; ++i)
+            if (id == kParamIds[i] && cc >= 0 && cc < 128) ccMap[cc] = i;
+    }
+}
+
+int SpinProcessor::mappingCount() const
+{
+    int n = 0;
+    for (const auto& c : ccMap) if (c.load() >= 0) ++n;
+    return n;
+}
+
+static juce::String readDefaultMapping (const juce::File& f)
+{
+    if (auto x = juce::XmlDocument::parse (f)) return x->getStringAttribute ("defaultMidiLearn");
+    return {};
+}
+
+void SpinProcessor::saveDefaultMapping()
+{
+    auto f = settingsFile();
+    juce::XmlElement x ("StudioWigaSettings");
+    if (auto old = juce::XmlDocument::parse (f)) x = *old;
+    x.setAttribute ("defaultMidiLearn", mappingToString());
+    f.getParentDirectory().createDirectory();
+    x.writeTo (f);
+}
+
+void SpinProcessor::loadDefaultMapping()   { mappingFromString (readDefaultMapping (settingsFile())); }
+int  SpinProcessor::defaultMappingCount() const
+{
+    juce::StringArray pairs;
+    pairs.addTokens (readDefaultMapping (settingsFile()), ";", "");
+    pairs.removeEmptyStrings();
+    return pairs.size();
+}
+
+void SpinProcessor::clearDefaultMapping()
+{
+    auto f = settingsFile();
+    juce::XmlElement x ("StudioWigaSettings");
+    if (auto old = juce::XmlDocument::parse (f)) x = *old;
+    x.removeAttribute ("defaultMidiLearn");
+    f.getParentDirectory().createDirectory();
+    x.writeTo (f);
+}
+
+//==============================================================================
 // pre-ecoute
 void SpinProcessor::startPreview (const juce::File& f)
 {
@@ -1027,9 +1095,8 @@ void SpinProcessor::getStateInformation (juce::MemoryBlock& dest)
     xml->setAttribute ("uiScale", uiScaleIdx);
     xml->setAttribute ("uiFullScreen", uiFullScreen);
     xml->setAttribute ("scratchMode", scratchMode.load());
-    juce::String map;
-    for (int cc = 0; cc < 128; ++cc) if (ccMap[cc].load() >= 0) map << cc << ":" << kParamIds[ccMap[cc].load()] << ";";
-    xml->setAttribute ("midiLearn", map);
+    xml->setAttribute ("midiLearn", mappingToString());
+    xml->setAttribute ("midiLearnProject", true);          // ce projet a ses propres assignations (meme vides)
     copyXmlToBinary (*xml, dest);
 }
 
@@ -1042,16 +1109,10 @@ void SpinProcessor::setStateInformation (const void* data, int size)
     uiFullScreen = xml->getBoolAttribute ("uiFullScreen", false);
     scratchMode = xml->getBoolAttribute ("scratchMode", false);
 
-    for (auto& c : ccMap) c = -1;
-    juce::StringArray pairs;
-    pairs.addTokens (xml->getStringAttribute ("midiLearn"), ";", "");
-    for (const auto& p : pairs)
-    {
-        const int cc = p.upToFirstOccurrenceOf (":", false, false).getIntValue();
-        const auto id = p.fromFirstOccurrenceOf (":", false, false);
-        for (int i = 0; i < numParams; ++i)
-            if (id == kParamIds[i] && cc >= 0 && cc < 128) ccMap[cc] = i;
-    }
+    // projet enregistre avec ses assignations : on les reprend ; ancien projet sans assignation : on garde le MIDI Learn par defaut
+    const auto projMap = xml->getStringAttribute ("midiLearn");
+    if (xml->getBoolAttribute ("midiLearnProject", false) || projMap.isNotEmpty())
+        mappingFromString (projMap);
 
     for (int di = 0; di < 2; ++di)
     {

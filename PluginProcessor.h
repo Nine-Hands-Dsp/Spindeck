@@ -125,6 +125,15 @@ public:
     std::atomic<int>  theme { 0 };                             // design de l'interface
     std::atomic<int>  learnTarget { -1 };                      // parametre en attente de MIDI Learn
     std::atomic<int>  ccMap[128];                              // CC appris -> parametre (-1)
+
+    // MIDI Learn par defaut (fichier de reglages commun) : rappele a chaque nouvelle ouverture du plugin
+    juce::String mappingToString() const;
+    void mappingFromString (const juce::String&);
+    int  mappingCount() const;
+    void saveDefaultMapping();
+    void loadDefaultMapping();
+    void clearDefaultMapping();
+    int  defaultMappingCount() const;
     int uiScaleIdx = -1;
     bool uiFullScreen = false;                                 // plein ecran memorise avec le projet
 
