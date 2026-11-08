@@ -568,7 +568,8 @@ public:
         const float target = armAngleFor (rho);
         if (armAngle < -100.0f) armAngle = target;
         const float da = target - armAngle;
-        armAngle = std::abs (da) < 0.004f ? target : armAngle + da * 0.16f;
+        // retour au repos 30 % plus lent que la pose sur le disque (0,125 au lieu de 0,16 par image)
+        armAngle = std::abs (da) < 0.004f ? target : armAngle + da * (rho < 0.0f ? 0.125f : 0.16f);
         const bool armMoving = std::abs (da) > 0.004f;
 
         // fin de morceau : le son s'arrete mais le disque continue de tourner jusqu'a ce que le bras soit
