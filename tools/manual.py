@@ -165,7 +165,7 @@ def content(lang):
 
     # 7 -------------------------------------------------------------------------------------------------
     b += [("h1", "7. Bibliothèque et chargement"),
-          ("img", "library.png", 160, None),
+          ("img", "library.png", 120, None),
           ("bullets", ["<b>Icône dossier</b> (à côté du titre LIBRARY) : choisit le dossier de musique ; ses sous-dossiers sont aussi parcourus (jusqu'à 20 000 morceaux).",
                        "<b>Icône flèche circulaire</b> : relit le dossier après avoir ajouté des fichiers. Le nombre de morceaux est affiché juste après ces icônes.",
                        "<b>Recherche</b> (loupe, après le nombre de morceaux) : cliquez dessus pour ouvrir le champ, puis tapez un ou plusieurs mots (Échap efface et referme) ; ils sont cherchés dans l'artiste, le titre et le nom du dossier.",
@@ -173,7 +173,7 @@ def content(lang):
                        "<b>LIBRARY</b> (barre du haut, ou bouton bibliothèque de la platine) : bibliothèque en plein écran, formes d'onde gardées en haut."]),
           ("h2", "Pré-écoute"),
           ("p", "La pré-écoute fait entendre un morceau de la bibliothèque sans le charger sur une platine. Le fichier est lu directement depuis le disque, sans analyse, et démarre aussitôt."),
-          ("p", "Le lecteur de pré-écoute est centré sur la deuxième ligne, entre la recherche (à gauche) et les boutons A / B (à droite)."),
+          ("p", "Le lecteur de pré-écoute est au centre du bandeau, entre la loupe (à gauche) et les boutons A / B (à droite)."),
           ("bullets", ["<b>Bouton rond vert</b> : lance la pré-écoute du morceau sélectionné ; il affiche un carré (arrêt) pendant la lecture.",
                        "<b>Icône lecture</b> au début de chaque ligne : lance la pré-écoute de cette ligne, ou l'arrête si elle joue déjà. La ligne en cours affiche un petit égaliseur vert.",
                        "<b>Suivi de la sélection</b> : pendant une pré-écoute, choisir une autre ligne (souris ou encodeur BROWSE de la platine) passe directement à ce morceau.",
