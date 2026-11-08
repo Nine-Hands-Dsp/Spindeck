@@ -140,6 +140,10 @@ int main (int argc, char** argv)
         auto fz = out.getChildFile ("deck_zoom_" + juce::String (theme) + ".png");
         fz.deleteFile();
         if (auto os = fz.createOutputStream()) png.writeImageToStream (zoom, *os);
+        auto armz = ed->createComponentSnapshot ({ 260, 300, 190, 230 }, true, 4.0f);
+        auto fa = out.getChildFile ("arm_zoom_" + juce::String (theme) + ".png");
+        fa.deleteFile();
+        if (auto os = fa.createOutputStream()) png.writeImageToStream (armz, *os);
     }
     proc.reset();
     return 0;

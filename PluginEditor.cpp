@@ -714,12 +714,17 @@ private:
             g.fillEllipse (P.x - R * 0.13f + 5, P.y - R * 0.13f + 7, R * 0.26f, R * 0.26f);
         }
 
-        // socle du bras
+        // socle du bras : alu avec reflet et grain fin
         {
             const float br = R * 0.15f;
-            juce::ColourGradient base (juce::Colour (0xff8b929c), P.x - br, P.y - br, juce::Colour (0xff23262b), P.x + br, P.y + br, false);
+            juce::Path disc; disc.addEllipse (P.x - br, P.y - br, 2 * br, 2 * br);
+            juce::ColourGradient base (juce::Colour (0xffc3c9d1), P.x - br, P.y - br, juce::Colour (0xff1f2226), P.x + br, P.y + br, false);
+            base.addColour (0.42, juce::Colour (0xff8a919b));
+            base.addColour (0.55, juce::Colour (0xffd8dde3));
+            base.addColour (0.70, juce::Colour (0xff50565f));
             g.setGradientFill (base);
-            g.fillEllipse (P.x - br, P.y - br, 2 * br, 2 * br);
+            g.fillPath (disc);
+            grain (g, disc, 0.6f, P);
             g.setColour (juce::Colours::black.withAlpha (0.6f));
             g.drawEllipse (P.x - br, P.y - br, 2 * br, 2 * br, 1.0f);
         }
@@ -730,27 +735,25 @@ private:
             g.fillEllipse (rest.x - R * 0.05f, rest.y - R * 0.05f, R * 0.10f, R * 0.10f);
         }
 
-        // tube chrome : sombre, corps, liseré de lumiere decale vers la lumiere
-        g.setColour (juce::Colour (0xff3b3f46));
-        g.strokePath (arm, juce::PathStrokeType (tube + 1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        g.setColour (juce::Colour (0xffb9bfc8));
-        g.strokePath (arm, juce::PathStrokeType (tube - 0.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        g.setColour (juce::Colours::white.withAlpha (0.85f));
-        g.strokePath (arm, juce::PathStrokeType (juce::jmax (0.8f, tube * 0.28f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
-                      juce::AffineTransform::translation (-tube * 0.22f, -tube * 0.22f));
-
-        // contrepoids
+        // tube chrome : bandes de reflet en travers du tube + grain fin brosse dans l'axe
+        chromeRod (g, W, P, tube * 0.9f);
+        chromeRod (g, P, K, tube);
         {
+            const float jr = tube * 0.75f;                     // jonction tube / porte-cellule
+            juce::ColourGradient jg (juce::Colours::white, K.x - jr, K.y - jr, juce::Colour (0xff3a3e45), K.x + jr, K.y + jr, false);
+            g.setGradientFill (jg);
+            g.fillEllipse (K.x - jr, K.y - jr, 2 * jr, 2 * jr);
+        }
+
+        // contrepoids : gros cylindre chrome avec une gorge sombre
+        {
+            const float cl = R * 0.13f;
+            chromeRod (g, W + u * (cl * 0.5f), W - u * (cl * 0.5f), R * 0.20f, false);
             const juce::Point<float> n (-u.y, u.x);
-            const float cw = R * 0.10f, cl = R * 0.13f;
-            juce::Path w;
-            const auto w0 = W + u * (cl * 0.5f), w1 = W - u * (cl * 0.5f);
-            w.startNewSubPath (w0 + n * cw); w.lineTo (w1 + n * cw); w.lineTo (w1 - n * cw); w.lineTo (w0 - n * cw); w.closeSubPath();
-            juce::ColourGradient cg (juce::Colour (0xffd7dce3), (W + n * cw).x, (W + n * cw).y, juce::Colour (0xff3a3e45), (W - n * cw).x, (W - n * cw).y, false);
-            g.setGradientFill (cg);
-            g.fillPath (w);
-            g.setColour (juce::Colours::black.withAlpha (0.5f));
-            g.strokePath (w, juce::PathStrokeType (0.8f));
+            const float cw = R * 0.10f;
+            const auto gA = W + u * (cl * 0.12f);
+            g.setColour (juce::Colours::black.withAlpha (0.45f));
+            g.drawLine ({ gA + n * cw, gA - n * cw }, 1.2f);
         }
 
         // pivot
@@ -779,6 +782,70 @@ private:
             g.setColour (juce::Colour (0xffb9bfc8));
             g.drawLine ({ f0, f1 }, 1.4f);
         }
+    }
+
+    // texture de grain chrome : stries fines et irregulieres (le metal poli/brosse), tuilable, calculee une fois
+    static const juce::Image& grainTexture()
+    {
+        static juce::Image tex = []
+        {
+            const int N = 128;
+            juce::Image im (juce::Image::ARGB, N, N, true, juce::SoftwareImageType());
+            juce::Random rnd (777);
+            std::vector<float> row ((size_t) N), phase ((size_t) N);
+            for (int y = 0; y < N; ++y) { row[(size_t) y] = rnd.nextFloat() * 2 - 1; phase[(size_t) y] = rnd.nextFloat() * 6.2832f; }
+            for (int y = 0; y < N; ++y)
+                for (int x = 0; x < N; ++x)
+                {
+                    // stries le long de x (bruit par ligne, tres etire) + pointilles tres fins
+                    const float along = std::sin (x * 6.2832f / N * 3 + phase[(size_t) y]) * 0.35f;
+                    const float v = row[(size_t) y] * 0.65f + along * row[(size_t) ((y + 37) % N)] + (rnd.nextFloat() * 2 - 1) * 0.35f;
+                    const float a = juce::jlimit (0.0f, 1.0f, std::abs (v)) * 0.30f;
+                    im.setPixelAt (x, y, (v > 0 ? juce::Colours::white : juce::Colours::black).withAlpha (a));
+                }
+            return im;
+        }();
+        return tex;
+    }
+
+    // applique le grain a une forme, stries orientees selon dir (axe du tube)
+    static void grain (juce::Graphics& g, const juce::Path& shape, float strength, juce::Point<float> origin, float dirAngle = 0.785f)
+    {
+        juce::Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (shape);
+        g.setFillType (juce::FillType (grainTexture(), juce::AffineTransform::scale (0.35f, 0.35f).rotated (dirAngle).translated (origin)));
+        g.setOpacity (strength);
+        g.fillPath (shape);
+    }
+
+    // tige chrome de a a b : degrade en travers (bandes claires/sombres comme un vrai cylindre poli), grain dans l'axe
+    static void chromeRod (juce::Graphics& g, juce::Point<float> a, juce::Point<float> b, float width, bool roundCaps = true)
+    {
+        auto d = b - a;
+        const float len = d.getDistanceFromOrigin();
+        if (len < 0.5f) return;
+        d /= len;
+        juce::Point<float> n (-d.y, d.x);
+        if (n.x + n.y > 0) n = -n;                                // n regarde vers la lumiere (haut gauche)
+        juce::Path rod;
+        rod.startNewSubPath (a); rod.lineTo (b);
+        juce::Path body;
+        juce::PathStrokeType (width, juce::PathStrokeType::curved, roundCaps ? juce::PathStrokeType::rounded : juce::PathStrokeType::butt)
+            .createStrokedPath (body, rod);
+
+        const auto hi = a + n * (width * 0.5f), lo = a - n * (width * 0.5f);
+        juce::ColourGradient cg (juce::Colour (0xff2c2f35), hi.x, hi.y, juce::Colour (0xff1d1f23), lo.x, lo.y, false);
+        cg.addColour (0.10, juce::Colour (0xff9aa1ab));
+        cg.addColour (0.22, juce::Colour (0xfff7f9fc));          // reflet principal
+        cg.addColour (0.34, juce::Colour (0xffb7bec8));
+        cg.addColour (0.52, juce::Colour (0xff5b616b));          // bande sombre (reflet du sol)
+        cg.addColour (0.70, juce::Colour (0xffaab1bb));          // contre-reflet
+        cg.addColour (0.86, juce::Colour (0xff6c727c));
+        g.setGradientFill (cg);
+        g.fillPath (body);
+        grain (g, body, 0.9f, a, std::atan2 (d.y, d.x));
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.strokePath (body, juce::PathStrokeType (0.6f));
     }
 
     // ------------------------------------------------------------ images (construites par le timer, jamais dans paint)
