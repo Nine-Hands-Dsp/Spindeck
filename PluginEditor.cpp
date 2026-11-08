@@ -598,6 +598,8 @@ public:
             // deux rangees de points stroboscopiques, comme sur une platine Technics :
             // la rangee interieure tourne avec le disque ; la rangee exterieure, plus espacee, donne
             // l'impression de tourner a l'envers (effet stroboscopique), d'autant plus vite que le disque tourne.
+            const auto lamp = strobeLamp();
+            const float lampReach = R * 0.42f;
             auto row = [&] (float radius, int count, float rot, float size)
             {
                 for (int i = 0; i < count; ++i)
@@ -605,8 +607,13 @@ public:
                     const float a = rot + i * juce::MathConstants<float>::twoPi / count;
                     const float x = cx + std::sin (a) * radius, y = cy - std::cos (a) * radius;
                     const float lit = 0.45f + 0.55f * juce::jmax (0.0f, -(std::sin (a) - std::cos (a)) * 0.7071f);   // cote lumiere plus clair
-                    g.setColour (juce::Colour (0xffeef1f5).withAlpha (0.40f + 0.55f * lit));
-                    g.fillRect (x - size * 0.5f, y - size * 0.5f, size, size);
+                    // la lampe stroboscopique rouge eclaire les points proches
+                    const float dl = lamp.getDistanceFrom ({ x, y }) / lampReach;
+                    const float red = std::exp (-dl * dl);
+                    const auto base = juce::Colour (0xffeef1f5).withAlpha (0.40f + 0.55f * lit);
+                    g.setColour (base.interpolatedWith (juce::Colour (0xffff2a2a), red));
+                    const float sz = size * (1.0f + 0.5f * red);
+                    g.fillRect (x - sz * 0.5f, y - sz * 0.5f, sz, sz);
                 }
             };
             // (a 30 images/s la rangee interieure avance de ~1/3 d'intervalle par image : elle suit le disque ;
@@ -619,6 +626,19 @@ public:
         g.setOpacity (1.0f);
         if (vinyl.isValid())
             g.drawImageTransformed (vinyl, juce::AffineTransform::scale (1.0f / kOver));
+
+        // lumiere rouge de la lampe stroboscopique sur le bord du plateau et du vinyle
+        {
+            const auto lamp = strobeLamp();
+            juce::Graphics::ScopedSaveState ss (g);
+            juce::Path plate; plate.addEllipse (cx - R - 8, cy - R - 8, 2 * R + 16, 2 * R + 16);
+            g.reduceClipRegion (plate);
+            juce::ColourGradient red (juce::Colour (0xffff2020).withAlpha (0.55f), lamp.x, lamp.y,
+                                      juce::Colour (0xffff2020).withAlpha (0.0f), lamp.x + R * 0.55f, lamp.y, true);
+            red.addColour (0.25, juce::Colour (0xffff2020).withAlpha (0.28f));
+            g.setGradientFill (red);
+            g.fillEllipse (lamp.x - R * 0.55f, lamp.y - R * 0.55f, R * 1.1f, R * 1.1f);
+        }
 
         drawSurface (g);
         g.setOpacity (1.0f);                     // l'etiquette ne doit pas prendre l'alpha de la derniere couleur
@@ -650,6 +670,8 @@ public:
 
         drawArm (g);
 
+        drawPowerBlock (g);
+
         if (scratchMode)                                           // mode scratch : icone en bas a droite du disque
         {
             const float sz = juce::jmax (18.0f, R * 0.22f);
@@ -675,6 +697,92 @@ public:
 
 private:
     static constexpr int kOver = 2;                       // images calculees en 2x : nettes jusqu'a la taille maximale
+
+    // bloc en bas a gauche (comme une platine Technics) : bouton marche / arret et lampe stroboscopique rouge
+    juce::Point<float> powerKnob() const
+    {
+        const float R = discR();
+        return { centre().x - R * 0.90f, centre().y + R * 0.92f };
+    }
+    juce::Point<float> strobeLamp() const                   // la lentille, juste au bord du plateau, tournee vers lui
+    {
+        const float R = discR();
+        const float a = juce::degreesToRadians (213.0f);
+        return { centre().x + std::sin (a) * (R + 12.0f), centre().y - std::cos (a) * (R + 12.0f) };
+    }
+
+    void drawPowerBlock (juce::Graphics& g)
+    {
+        const float R = discR();
+        const auto k = powerKnob();
+        const float kr = juce::jmax (9.0f, R * 0.115f);
+
+        // ombre portee
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.fillEllipse (k.x - kr + 2.5f, k.y - kr + 3.5f, 2 * kr, 2 * kr);
+        // jupe chromee
+        juce::ColourGradient skirt (juce::Colour (0xffe3e7ec), k.x - kr, k.y - kr, juce::Colour (0xff3b3f46), k.x + kr, k.y + kr, false);
+        skirt.addColour (0.5, juce::Colour (0xff8d939c));
+        g.setGradientFill (skirt);
+        g.fillEllipse (k.x - kr, k.y - kr, 2 * kr, 2 * kr);
+        // bord moletee
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        for (int i = 0; i < 48; ++i)
+        {
+            const float a = i * juce::MathConstants<float>::twoPi / 48;
+            g.drawLine (k.x + std::sin (a) * kr * 0.86f, k.y - std::cos (a) * kr * 0.86f, k.x + std::sin (a) * kr, k.y - std::cos (a) * kr, 0.5f);
+        }
+        // dessus noir
+        const float tr = kr * 0.80f;
+        juce::ColourGradient top (juce::Colour (0xff34383f), k.x - tr * 0.6f, k.y - tr * 0.7f, juce::Colour (0xff0b0c0e), k.x + tr * 0.5f, k.y + tr * 0.8f, false);
+        g.setGradientFill (top);
+        g.fillEllipse (k.x - tr, k.y - tr, 2 * tr, 2 * tr);
+        g.setColour (juce::Colours::white.withAlpha (0.18f));
+        g.drawEllipse (k.x - tr, k.y - tr, 2 * tr, 2 * tr, 0.6f);
+        // reperes et inscriptions blanches
+        g.setColour (juce::Colours::white.withAlpha (0.85f));
+        for (int i = 0; i < 7; ++i)
+        {
+            const float a = juce::degreesToRadians (-120.0f + i * 40.0f);
+            const float r0 = tr * 0.72f, r1 = tr * (i % 3 == 0 ? 0.92f : 0.84f);
+            g.drawLine (k.x + std::sin (a) * r0, k.y - std::cos (a) * r0, k.x + std::sin (a) * r1, k.y - std::cos (a) * r1, 0.6f);
+        }
+        g.setFont (fnt (juce::jmax (5.0f, tr * 0.30f), true));
+        g.drawText ("START", juce::Rectangle<float> (k.x - tr, k.y - tr * 0.18f, 2 * tr, tr * 0.36f), juce::Justification::centred);
+        // fleche du bouton (tourne : ON quand la platine joue)
+        const float pa = juce::degreesToRadians (playing ? 40.0f : -40.0f);
+        g.setColour (juce::Colours::white);
+        g.drawLine (k.x + std::sin (pa) * tr * 0.35f, k.y - std::cos (pa) * tr * 0.35f, k.x + std::sin (pa) * tr * 0.62f, k.y - std::cos (pa) * tr * 0.62f, 1.4f);
+
+        // boitier de la lampe stroboscopique, oriente vers le plateau
+        const auto L = strobeLamp();
+        const auto C = centre();
+        auto dir = C - L; dir /= juce::jmax (1.0f, dir.getDistanceFromOrigin());
+        const float ang = std::atan2 (dir.y, dir.x);
+        {
+            juce::Graphics::ScopedSaveState ss (g);
+            g.addTransform (juce::AffineTransform::rotation (ang + juce::MathConstants<float>::halfPi).translated (L));
+            const float hw = juce::jmax (5.0f, R * 0.07f), hh = juce::jmax (4.0f, R * 0.05f);
+            g.setColour (juce::Colours::black.withAlpha (0.5f));
+            g.fillRoundedRectangle (-hw + 1.5f, -hh + 2.5f, 2 * hw, 2 * hh, 1.5f);
+            juce::ColourGradient hb (juce::Colour (0xff3a3e45), -hw, -hh, juce::Colour (0xff0d0e10), hw, hh, false);
+            g.setGradientFill (hb);
+            g.fillRoundedRectangle (-hw, -hh, 2 * hw, 2 * hh, 1.5f);
+            g.setColour (juce::Colours::white.withAlpha (0.2f));
+            g.drawRoundedRectangle (-hw, -hh, 2 * hw, 2 * hh, 1.5f, 0.5f);
+            // lentille rouge (face au plateau, en haut dans ce repere)
+            const auto lens = juce::Rectangle<float> (hw * 1.3f, hh * 0.7f).withCentre ({ 0.0f, -hh * 0.35f });
+            g.setColour (juce::Colour (0xffff2a2a).withAlpha (0.35f));
+            g.fillRoundedRectangle (lens.expanded (2.0f), 2.0f);
+            juce::ColourGradient lg (juce::Colour (0xffffd0d0), lens.getCentreX(), lens.getCentreY(), juce::Colour (0xffd01010), lens.getRight(), lens.getBottom(), true);
+            g.setGradientFill (lg);
+            g.fillRoundedRectangle (lens, 1.2f);
+        }
+        // halo de la lampe
+        juce::ColourGradient glowR (juce::Colour (0xffff2020).withAlpha (0.45f), L.x, L.y, juce::Colour (0xffff2020).withAlpha (0.0f), L.x + R * 0.22f, L.y, true);
+        g.setGradientFill (glowR);
+        g.fillEllipse (L.x - R * 0.22f, L.y - R * 0.22f, R * 0.44f, R * 0.44f);
+    }
 
     // le disque a gauche, la place du bras a droite
     float discR() const { return juce::jmax (20.0f, juce::jmin (getHeight() * 0.5f - 9.0f, (getWidth() - 46.0f) * 0.5f - 7.0f)); }
