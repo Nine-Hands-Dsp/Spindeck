@@ -189,6 +189,19 @@ int main (int argc, char** argv)
         auto ff = out.getChildFile ("ui_final.png");
         ff.deleteFile();
         if (auto os = ff.createOutputStream()) png.writeImageToStream (full, *os);
+        // captures 2x pour la notice : interface en mode scratch, puis bibliotheque agrandie
+        auto big = ed->createComponentSnapshot (ed->getLocalBounds(), true, 2.0f);
+        auto fb = out.getChildFile ("manual_ui_2x.png");
+        fb.deleteFile();
+        if (auto os = fb.createOutputStream()) png.writeImageToStream (big, *os);
+        proc->post (0, spin::cmdScratchMode, 0.0);
+        proc->libraryToggle = true;
+        for (int i = 0; i < 6; ++i) { run (2); mm->runDispatchLoopUntil (40); }
+        auto lib = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+        auto fl = out.getChildFile ("manual_library.png");
+        fl.deleteFile();
+        if (auto os = fl.createOutputStream()) png.writeImageToStream (lib, *os);
+        proc->libraryToggle = false;
     }
     // fin de morceau : le bras retourne au repos
     {
