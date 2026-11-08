@@ -144,6 +144,11 @@ public:
             g.setColour (learning ? col::learn : accent);
             g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
+        else if (bipolar)                                           // au centre : petit point de repere
+        {
+            g.setColour (learning ? col::learn : accent);
+            g.fillEllipse (c.x - 1.8f, c.y - (r - 2) - 1.8f, 3.6f, 3.6f);
+        }
         if (learning)
         {
             g.setColour (col::learn.withAlpha (0.8f));
@@ -519,8 +524,8 @@ private:
             const int c0 = (int) ((long long) x * cols / w), c1 = juce::jmax (c0 + 1, (int) ((long long) (x + 1) * cols / w));
             int pk = 0, lo = 0;
             for (int k = c0; k < c1 && k < cols; ++k) { pk = std::max (pk, (int) track->wPeak[(size_t) k]); lo = std::max (lo, (int) track->wLow[(size_t) k]); }
-            const float a = pk / 255.0f * (h * 0.5f - 1.0f);
-            g.setColour (c.interpolatedWith (juce::Colours::white, 0.35f * (1.0f - lo / 255.0f)).withAlpha (0.85f));
+            const float a = juce::jmax (1.0f, pk / 255.0f * (h * 0.5f - 1.0f));
+            g.setColour (c.interpolatedWith (juce::Colours::white, 0.12f * (1.0f - lo / 255.0f)));
             g.fillRect ((float) x, h * 0.5f - a, 1.0f, 2.0f * a);
         }
     }
@@ -552,7 +557,7 @@ public:
         // bras : du sillon d'entree (bord) au sillon de sortie (centre) selon la progression
         const bool hasTrack = t != nullptr && t->numFrames > 0;
         const float prog = hasTrack ? (float) juce::jlimit (0.0, 1.0, pos / (double) t->numFrames) : 0.0f;
-        const float rho = hasTrack ? 0.95f - (0.95f - 0.40f) * prog : -1.0f;
+        const float rho = hasTrack ? 0.95f - (0.95f - 0.47f) * prog : -1.0f;
 
         if (vinyl.getWidth() != getWidth() * kOver || vinyl.getHeight() != getHeight() * kOver) { buildImages(); ask(); }
 
@@ -576,17 +581,33 @@ public:
         const auto accent = col::deck (deck);
         const float R = discR(), cx = centre().x, cy = centre().y;
 
-        // plateau : couronne metal avec repere lumineux de la platine
+        // plateau : bord metal sombre avec rangee de points stroboscopiques argentes qui tournent avec le disque
         {
-            const float pr = R + 7.0f;
-            juce::ColourGradient rim (juce::Colour (0xff6a707a), cx - pr, cy - pr, juce::Colour (0xff1a1c20), cx + pr, cy + pr, false);
-            rim.addColour (0.45, juce::Colour (0xff3a3e45));
+            const float pr = R + 4.5f;
+            g.setColour (juce::Colours::black.withAlpha (0.45f));                  // ombre portee du plateau
+            g.fillEllipse (cx - pr + 3, cy - pr + 5, 2 * pr, 2 * pr);
+            juce::ColourGradient rim (juce::Colour (0xffc9ced6), cx - pr, cy - pr, juce::Colour (0xff3a3e45), cx + pr, cy + pr, false);
+            rim.addColour (0.45, juce::Colour (0xff7d838c));
             g.setGradientFill (rim);
             g.fillEllipse (cx - pr, cy - pr, 2 * pr, 2 * pr);
-            g.setColour (juce::Colours::black.withAlpha (0.6f));
-            g.drawEllipse (cx - pr, cy - pr, 2 * pr, 2 * pr, 1.0f);
-            g.setColour (accent.withAlpha (scratching ? 1.0f : (playing ? 0.75f : 0.25f)));
-            g.drawEllipse (cx - pr + 2.5f, cy - pr + 2.5f, 2 * pr - 5, 2 * pr - 5, scratching ? 3.0f : 1.6f);
+            g.setColour (juce::Colour (0xff8a9099).withAlpha (0.55f));
+            g.drawEllipse (cx - pr + 0.5f, cy - pr + 0.5f, 2 * pr - 1, 2 * pr - 1, 0.8f);
+            const float dr = R + 2.4f;
+            const int nd = 180;
+            for (int i = 0; i < nd; ++i)
+            {
+                const float a = angle + i * juce::MathConstants<float>::twoPi / nd;
+                const float x = cx + std::sin (a) * dr, y = cy - std::cos (a) * dr;
+                // les points cote lumiere (haut gauche) sont plus clairs
+                const float lit = 0.45f + 0.55f * juce::jmax (0.0f, -(std::sin (a) + -std::cos (a)) * 0.7071f);
+                g.setColour (juce::Colour (0xffd5dae1).withAlpha (0.35f + 0.5f * lit));
+                g.fillRect (x - 0.6f, y - 0.6f, 1.2f, 1.2f);
+            }
+            if (scratching)
+            {
+                g.setColour (accent.withAlpha (0.85f));
+                g.drawEllipse (cx - pr - 1.5f, cy - pr - 1.5f, 2 * pr + 3, 2 * pr + 3, 2.0f);
+            }
         }
 
         // vinyle (image fixe : les sillons sont des cercles, le reflet ne tourne pas avec le disque)
@@ -606,7 +627,7 @@ public:
         }
         // brillance fixe du papier glace (la lumiere ne tourne pas avec le disque)
         {
-            const float lr = R * 0.34f;
+            const float lr = R * 0.40f;
             juce::ColourGradient gl (juce::Colours::white.withAlpha (0.14f), cx - lr * 0.6f, cy - lr * 0.7f, juce::Colours::transparentWhite, cx, cy, true);
             g.setGradientFill (gl);
             g.fillEllipse (cx - lr, cy - lr, 2 * lr, 2 * lr);
@@ -621,12 +642,6 @@ public:
             g.drawEllipse (cx - sr, cy - sr, 2 * sr, 2 * sr, 0.8f);
         }
 
-        if (scratchMode)
-        {
-            g.setColour (accent);
-            g.setFont (fnt (11.0f, true));
-            g.drawText ("SCRATCH", juce::Rectangle<float> (cx - 40, cy + R * 0.40f, 80, 14), juce::Justification::centred);
-        }
 
         drawArm (g);
     }
@@ -658,13 +673,13 @@ private:
 
     juce::Rectangle<int> discArea() const
     {
-        const float r = discR() + 2.0f;
+        const float r = discR() + 10.0f;
         return juce::Rectangle<float> (centre().x - r, centre().y - r, 2 * r, 2 * r).getSmallestIntegerContainer();
     }
 
     juce::Rectangle<int> labelArea() const
     {
-        const float lr = discR() * 0.34f + 2.0f;
+        const float lr = discR() * 0.40f + 2.0f;
         return juce::Rectangle<float> (centre().x - lr, centre().y - lr, 2 * lr, 2 * lr).getSmallestIntegerContainer();
     }
 
@@ -708,6 +723,7 @@ private:
         juce::Path arm;
         arm.startNewSubPath (W);
         arm.lineTo (P);
+        arm.lineTo (P + u * (armLen() * 0.70f));
         arm.lineTo (K);
         juce::Path shell;
         {
@@ -752,8 +768,10 @@ private:
         }
 
         // tube chrome : bandes de reflet en travers du tube + grain fin brosse dans l'axe
+        const auto Bp = P + u * (armLen() * 0.70f);              // coude du bras (forme en S des platines)
         chromeRod (g, W, P, tube * 0.9f);
-        chromeRod (g, P, K, tube);
+        chromeRod (g, P, Bp, tube);
+        chromeRod (g, Bp, K, tube);
         {
             const float jr = tube * 0.75f;                     // jonction tube / porte-cellule
             juce::ColourGradient jg (juce::Colours::white, K.x - jr, K.y - jr, juce::Colour (0xff3a3e45), K.x + jr, K.y + jr, false);
@@ -877,9 +895,9 @@ private:
     {
         specks.clear(); marks.clear();
         juce::Random rnd (4242 + deck * 31);
-        for (int i = 0; i < 110; ++i)
+        for (int i = 0; i < 45; ++i)
             specks.push_back ({ 0.38f + 0.59f * std::sqrt (rnd.nextFloat()), rnd.nextFloat() * juce::MathConstants<float>::twoPi,
-                                0.35f + rnd.nextFloat() * (rnd.nextFloat() < 0.1f ? 1.1f : 0.5f), 0.10f + rnd.nextFloat() * 0.22f });
+                                0.35f + rnd.nextFloat() * (rnd.nextFloat() < 0.1f ? 0.9f : 0.4f), 0.05f + rnd.nextFloat() * 0.12f });
         // micro-rayures dans le sens des sillons
         for (int i = 0; i < 7; ++i)
             marks.push_back ({ 0.42f + 0.52f * rnd.nextFloat(), rnd.nextFloat() * juce::MathConstants<float>::twoPi,
@@ -920,7 +938,7 @@ private:
             const float a = sp.phi + angle;
             const float x = std::sin (a) * sp.rho * R, y = -std::cos (a) * sp.rho * R;
             const float glint = sheenAt (x, y);
-            g.setColour (juce::Colours::white.withAlpha (juce::jlimit (0.0f, 1.0f, sp.alpha + 0.65f * glint)));
+            g.setColour (juce::Colours::white.withAlpha (juce::jlimit (0.0f, 1.0f, sp.alpha + 0.45f * glint)));
             const float s = sp.size * (1.0f + 0.6f * glint);
             g.fillEllipse (c.x + x - s * 0.5f, c.y + y - s * 0.5f, s, s);
         }
@@ -946,7 +964,7 @@ private:
             juce::Image::BitmapData bd (vinyl, juce::Image::BitmapData::readWrite);
             const int x0 = juce::jmax (0, (int) (cx - R - 2)), x1 = juce::jmin (W, (int) (cx + R + 2));
             const int y0 = juce::jmax (0, (int) (cy - R - 2)), y1 = juce::jmin (H, (int) (cy + R + 2));
-            const float gaps[3] = { 0.80f, 0.66f, 0.53f };     // plages entre les morceaux
+            const float gaps[5] = { 0.895f, 0.805f, 0.715f, 0.625f, 0.535f };   // plages entre les morceaux
             for (int y = y0; y < y1; ++y)
                 for (int x = x0; x < x1; ++x)
                 {
@@ -964,9 +982,9 @@ private:
 
                     float lum = 0.050f + ambient;
                     float r = 1.0f, gr = 1.0f, b = 1.0f;
-                    const bool grooved = rho > 0.375f && rho < 0.972f;
+                    const bool grooved = rho > 0.43f && rho < 0.972f;
                     bool smooth = ! grooved;
-                    for (float gp : gaps) if (std::abs (rho - gp) < 0.0055f) smooth = true;
+                    for (float gp : gaps) if (std::abs (rho - gp) < 0.0042f) smooth = true;
 
                     if (rho >= 0.985f)                              // bord arrondi du disque
                     {
@@ -976,7 +994,7 @@ private:
                     else if (smooth)                                // surfaces lisses : reflet net et brillant
                     {
                         lum += 0.42f * std::exp (-(th * th) / (0.05f * 0.05f)) * (0.4f + 0.6f * rho);
-                        lum += 0.02f;
+                        lum += 0.055f;                              // fin cercle plus clair visible tout autour
                     }
                     else                                            // sillons : fine modulation + reflet granuleux et large
                     {
@@ -985,12 +1003,17 @@ private:
                         const float amp = 0.55f + 0.45f * hash (ringIdx + deck * 7919);
                         const float groove = 0.5f + 0.5f * std::sin (ring * juce::MathConstants<float>::twoPi);
                         lum += 0.012f * groove;
-                        const float sheen = std::exp (-(th * th) / (0.17f * 0.17f)) * (0.35f + 0.65f * rho);
-                        lum += sheen * (0.13f + 0.24f * groove * amp);
-                        // legere irisation au bord du reflet
-                        const float iri = sheen * (1.0f - sheen) * 0.6f;
-                        r += iri * std::sin (th * 40.0f);
-                        b += iri * std::cos (th * 40.0f);
+                        const float sheen = std::exp (-(th * th) / (0.19f * 0.19f)) * (0.35f + 0.65f * rho);
+                        const float spec = sheen * (0.21f + 0.30f * groove * (0.75f + 0.25f * amp));
+                        // diffraction : la couleur change avec le rayon et l'ecart au centre du reflet (arc-en-ciel des vinyles)
+                        float hue = std::fmod (0.55f + rho * 2.6f + th * 1.6f, 1.0f);
+                        if (hue < 0) hue += 1.0f;
+                        const auto rainbow = juce::Colour::fromHSV (hue, 0.48f, 1.0f, 1.0f);
+                        const float w = juce::jlimit (0.0f, 0.9f, spec * 2.0f);
+                        lum += spec;
+                        r  = 1.0f + w * (rainbow.getFloatRed()   * 1.6f - 1.0f);
+                        gr = 1.0f + w * (rainbow.getFloatGreen() * 1.6f - 1.0f);
+                        b  = 1.0f + w * (rainbow.getFloatBlue()  * 1.6f - 1.0f);
                     }
                     lum = juce::jlimit (0.0f, 1.0f, lum);
                     const auto px = juce::Colour::fromFloatRGBA (juce::jlimit (0.0f, 1.0f, lum * r * 0.96f),
@@ -1001,28 +1024,31 @@ private:
         }
 
         // etiquette : papier teinte a la couleur de la platine, imprimee, avec grain
-        const int LW = (int) std::ceil (R * 0.68f) | 1;
+        const int LW = (int) std::ceil (R * 0.80f) | 1;
         label = juce::Image (juce::Image::ARGB, LW, LW, true, juce::SoftwareImageType());
         {
             juce::Graphics lg (label);
             const float lr = LW * 0.5f;
-            const auto paper = col::deck (deck).darker (0.15f);
-            juce::ColourGradient pg (paper.brighter (0.18f), 0, 0, paper.darker (0.25f), (float) LW, (float) LW, false);
+            const auto paper = col::deck (deck);
+            juce::ColourGradient pg (paper.brighter (0.12f), 0, 0, paper.darker (0.18f), (float) LW, (float) LW, false);
             lg.setGradientFill (pg);
             lg.fillEllipse (0, 0, (float) LW, (float) LW);
-            const auto ink = paper.getPerceivedBrightness() > 0.55f ? juce::Colour (0xff111111) : juce::Colours::white;
-            lg.setColour (ink.withAlpha (0.55f));
-            lg.drawEllipse (lr * 0.12f, lr * 0.12f, LW - lr * 0.24f, LW - lr * 0.24f, juce::jmax (1.0f, lr * 0.02f));
+            lg.setColour (juce::Colours::black.withAlpha (0.25f));
+            lg.drawEllipse (0.5f, 0.5f, LW - 1.0f, LW - 1.0f, 1.0f);
+            const auto ink = juce::Colour (0xff0d1014);
+            lg.setColour (ink.withAlpha (0.35f));
+            lg.drawEllipse (lr * 0.08f, lr * 0.08f, LW - lr * 0.16f, LW - lr * 0.16f, juce::jmax (1.0f, lr * 0.012f));
             lg.setColour (ink);
-            lg.setFont (fnt (lr * 0.26f, true));
-            lg.drawText ("SPINDECK", juce::Rectangle<float> (0, lr * 0.40f, (float) LW, lr * 0.30f), juce::Justification::centred);
-            lg.setFont (fnt (lr * 0.13f, true));
-            lg.drawText ("NINE HANDS | DSP", juce::Rectangle<float> (0, lr * 0.70f, (float) LW, lr * 0.18f), juce::Justification::centred);
-            lg.setColour (ink.withAlpha (0.85f));
+            lg.setFont (fnt (lr * 0.27f, true));
+            lg.drawText ("SPINDECK", juce::Rectangle<float> (0, lr * 0.38f, (float) LW, lr * 0.32f), juce::Justification::centred);
+            lg.setFont (fnt (lr * 0.12f, true));
+            lg.drawText ("NINE HANDS | DSP", juce::Rectangle<float> (0, lr * 0.70f, (float) LW, lr * 0.16f), juce::Justification::centred);
             lg.setFont (fnt (lr * 0.15f, true));
             lg.drawText (deck == 0 ? "SIDE A" : "SIDE B", juce::Rectangle<float> (0, lr * 1.22f, (float) LW, lr * 0.20f), juce::Justification::centred);
-            lg.setFont (fnt (lr * 0.11f));
-            lg.drawText ("33 1/3 RPM  STEREO", juce::Rectangle<float> (0, lr * 1.44f, (float) LW, lr * 0.16f), juce::Justification::centred);
+            lg.setFont (fnt (lr * 0.10f, true));
+            lg.drawText ("33 1/3 RPM", juce::Rectangle<float> (0, lr * 1.44f, (float) LW, lr * 0.15f), juce::Justification::centred);
+            lg.fillRect (lr * 0.52f, lr * 1.515f, lr * 0.16f, juce::jmax (1.0f, lr * 0.012f));
+            lg.fillRect (lr * 1.32f, lr * 1.515f, lr * 0.16f, juce::jmax (1.0f, lr * 0.012f));
             // grain du papier
             juce::Random rnd (1234 + deck);
             for (int i = 0; i < LW * LW / 6; ++i)
@@ -1293,7 +1319,7 @@ public:
         pitchCol.removeFromBottom (4);
         pitch.setBounds (pitchCol.reduced (0, 10));
 
-        auto btns = right ? b.removeFromLeft (214) : b.removeFromRight (214);
+        auto btns = right ? b.removeFromLeft (200) : b.removeFromRight (200);
         platter.setBounds (right ? b.withTrimmedLeft (6) : b.withTrimmedRight (6));
 
         btns.removeFromTop (4);
