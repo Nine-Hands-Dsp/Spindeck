@@ -190,6 +190,27 @@ int main (int argc, char** argv)
         ff.deleteFile();
         if (auto os = ff.createOutputStream()) png.writeImageToStream (full, *os);
     }
+    // fin de morceau : le bras retourne au repos
+    {
+        proc->theme = 0;
+        proc->post (0, spin::cmdScratchMode, 0.0);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+        ed->setSize (1600, 900);
+        if (! proc->view[0].playing.load()) run (1, { juce::MidiMessage::noteOn (1, 0x4A, (juce::uint8) 127) });
+        proc->post (0, spin::cmdSeekNorm, 0.993);
+        for (int i = 0; i < 4; ++i) { run (4); mm->runDispatchLoopUntil (35); }
+        for (int fr = 0; fr < 60; ++fr)
+        {
+            run (6);
+            mm->runDispatchLoopUntil (5);
+            auto img = ed->createComponentSnapshot ({ 70, 360, 330, 270 }, true, 1.5f);
+            juce::PNGImageFormat png;
+            auto f = out.getChildFile ("end_" + juce::String (fr).paddedLeft ('0', 2) + ".png");
+            f.deleteFile();
+            if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
+        }
+        std::cout << "end: playing=" << proc->view[0].playing.load() << std::endl;
+    }
     proc.reset();
     return 0;
 }
