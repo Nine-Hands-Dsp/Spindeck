@@ -583,31 +583,36 @@ public:
 
         // plateau : bord metal sombre avec rangee de points stroboscopiques argentes qui tournent avec le disque
         {
-            const float pr = R + 4.5f;
+            const float pr = R + 8.0f;                                             // bord argente un peu plus large : deux rangees de points
             g.setColour (juce::Colours::black.withAlpha (0.45f));                  // ombre portee du plateau
             g.fillEllipse (cx - pr + 3, cy - pr + 5, 2 * pr, 2 * pr);
-            juce::ColourGradient rim (juce::Colour (0xffc9ced6), cx - pr, cy - pr, juce::Colour (0xff3a3e45), cx + pr, cy + pr, false);
-            rim.addColour (0.45, juce::Colour (0xff7d838c));
+            juce::ColourGradient rim (juce::Colour (0xffd3d8df), cx - pr, cy - pr, juce::Colour (0xff3a3e45), cx + pr, cy + pr, false);
+            rim.addColour (0.45, juce::Colour (0xff80868f));
             g.setGradientFill (rim);
             g.fillEllipse (cx - pr, cy - pr, 2 * pr, 2 * pr);
-            g.setColour (juce::Colour (0xff8a9099).withAlpha (0.55f));
+            g.setColour (juce::Colour (0xff1c1f23).withAlpha (0.7f));             // fine gorge entre les deux rangees
+            g.drawEllipse (cx - (R + 4.2f), cy - (R + 4.2f), 2 * (R + 4.2f), 2 * (R + 4.2f), 0.6f);
+            g.setColour (juce::Colour (0xff8a9099).withAlpha (0.6f));
             g.drawEllipse (cx - pr + 0.5f, cy - pr + 0.5f, 2 * pr - 1, 2 * pr - 1, 0.8f);
-            const float dr = R + 2.4f;
-            const int nd = 180;
-            for (int i = 0; i < nd; ++i)
+
+            // deux rangees de points stroboscopiques, comme sur une platine Technics :
+            // la rangee interieure tourne avec le disque ; la rangee exterieure, plus espacee, donne
+            // l'impression de tourner a l'envers (effet stroboscopique), d'autant plus vite que le disque tourne.
+            auto row = [&] (float radius, int count, float rot, float size)
             {
-                const float a = angle + i * juce::MathConstants<float>::twoPi / nd;
-                const float x = cx + std::sin (a) * dr, y = cy - std::cos (a) * dr;
-                // les points cote lumiere (haut gauche) sont plus clairs
-                const float lit = 0.45f + 0.55f * juce::jmax (0.0f, -(std::sin (a) + -std::cos (a)) * 0.7071f);
-                g.setColour (juce::Colour (0xffd5dae1).withAlpha (0.35f + 0.5f * lit));
-                g.fillRect (x - 0.6f, y - 0.6f, 1.2f, 1.2f);
-            }
-            if (scratching)
-            {
-                g.setColour (accent.withAlpha (0.85f));
-                g.drawEllipse (cx - pr - 1.5f, cy - pr - 1.5f, 2 * pr + 3, 2 * pr + 3, 2.0f);
-            }
+                for (int i = 0; i < count; ++i)
+                {
+                    const float a = rot + i * juce::MathConstants<float>::twoPi / count;
+                    const float x = cx + std::sin (a) * radius, y = cy - std::cos (a) * radius;
+                    const float lit = 0.45f + 0.55f * juce::jmax (0.0f, -(std::sin (a) - std::cos (a)) * 0.7071f);   // cote lumiere plus clair
+                    g.setColour (juce::Colour (0xffeef1f5).withAlpha (0.40f + 0.55f * lit));
+                    g.fillRect (x - size * 0.5f, y - size * 0.5f, size, size);
+                }
+            };
+            // (a 30 images/s la rangee interieure avance de ~1/3 d'intervalle par image : elle suit le disque ;
+            //  la rangee exterieure recule lentement, sans repliement, quel que soit le pitch)
+            row (R + 2.3f, 180, angle, 1.2f);
+            row (R + 6.2f, 72, -angle * 0.12f, 1.7f);
         }
 
         // vinyle (image fixe : les sillons sont des cercles, le reflet ne tourne pas avec le disque)
@@ -673,7 +678,7 @@ private:
 
     juce::Rectangle<int> discArea() const
     {
-        const float r = discR() + 10.0f;
+        const float r = discR() + 13.0f;
         return juce::Rectangle<float> (centre().x - r, centre().y - r, 2 * r, 2 * r).getSmallestIntegerContainer();
     }
 
