@@ -452,12 +452,54 @@ public:
         g.drawRect (getLocalBounds());
     }
 
+    // souris : un clic place la lecture a l'endroit clique ; cliquer-glisser attrape la forme d'onde
+    // et la fait defiler (vers la droite = retour en arriere), comme dans un logiciel DJ
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        const auto t = proc.track (deck);
+        if (t == nullptr || t->numFrames <= 0 || getWidth() <= 0) return;
+        grabPos = proc.view[deck].pos.load();
+        grabX = e.position.x;
+        dragged = false;
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        const auto t = proc.track (deck);
+        if (t == nullptr || t->numFrames <= 0 || grabX < -1e5f) return;
+        if (! dragged && std::abs (e.position.x - grabX) < 3.0f) return;
+        dragged = true;
+        const double fpp = 10.0 * t->sampleRate / juce::jmax (1, getWidth());
+        seekTo (*t, grabPos - (e.position.x - grabX) * fpp);
+    }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        setMouseCursor (juce::MouseCursor::NormalCursor);
+        const auto t = proc.track (deck);
+        if (t != nullptr && t->numFrames > 0 && grabX > -1e5f && ! dragged)
+        {
+            const double fpp = 10.0 * t->sampleRate / juce::jmax (1, getWidth());
+            seekTo (*t, grabPos + (e.position.x - getWidth() * 0.5) * fpp);
+        }
+        grabX = -1e6f;
+    }
+
 private:
+    void seekTo (const Track& t, double frame)
+    {
+        proc.post (deck, cmdSeekNorm, juce::jlimit (0.0, 1.0, frame / (double) t.numFrames));
+    }
+
     SpinProcessor& proc;
     const int deck;
     juce::Image img;
     TrackPtr lastTrack;
     double lastPos = -1;
+    double grabPos = 0;
+    float grabX = -1e6f;
+    bool dragged = false;
 };
 
 //==============================================================================

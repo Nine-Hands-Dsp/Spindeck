@@ -224,6 +224,38 @@ int main (int argc, char** argv)
         }
         std::cout << "end: playing=" << proc->view[0].playing.load() << std::endl;
     }
+    // souris sur la forme d'onde defilante de la platine A : clic puis glisser
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+        ed->setSize (1600, 900);
+        for (int i = 0; i < 4; ++i) { run (2); mm->runDispatchLoopUntil (30); }
+        if (proc->view[0].playing.load()) run (1, { juce::MidiMessage::noteOn (1, 0x4A, (juce::uint8) 127) });
+        proc->post (0, spin::cmdSeekNorm, 0.5);
+        run (40);
+        ed->setVisible (true);
+        auto* lane = ed->getComponentAt (400, 100);
+        if (lane == nullptr) { std::cout << "lane not found" << std::endl; return 1; }
+        auto src = juce::Desktop::getInstance().getMainMouseSource();
+        auto ev = [&] (float x, float y, bool drag)
+        {
+            return juce::MouseEvent (src, { x, y }, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                     lane, lane, juce::Time::getCurrentTime(), { 1200.0f, 40.0f }, juce::Time::getCurrentTime(), 1, drag);
+        };
+        const double p0 = proc->view[0].pos.load();
+        // clic simple a droite de la tete de lecture (centre de la voie)
+        const float cx = lane->getWidth() * 0.5f;
+        lane->mouseDown (ev (cx + 200.0f, 40.0f, false)); lane->mouseUp (ev (cx + 200.0f, 40.0f, false));
+        run (40);
+        const double p1 = proc->view[0].pos.load();
+        // glisser de 300 px vers la droite : retour en arriere
+        lane->mouseDown (ev (cx, 40.0f, false));
+        for (int k = 1; k <= 10; ++k) { lane->mouseDrag (ev (cx + 30.0f * k, 40.0f, true)); run (4); }
+        lane->mouseUp (ev (cx + 300.0f, 40.0f, true));
+        run (40);
+        const double p2 = proc->view[0].pos.load();
+        const double fpp = 10.0 * 44100.0 / lane->getWidth();
+        std::cout << "lane click: +" << (p1 - p0) / fpp << " px (expected 200)  drag: " << (p2 - p1) / fpp << " px (expected -300)" << std::endl;
+    }
     proc.reset();
     return 0;
 }
