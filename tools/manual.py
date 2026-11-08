@@ -30,7 +30,8 @@ def content(lang):
                      ["Scratch", "Avec les jog wheels de la Discover DJ (mode SCRATCH) ou à la souris directement sur le vinyle."],
                      ["Analyse automatique", "BPM et grille de temps calculés au chargement ; le cue se place sur le premier son."],
                      ["Table de mixage", "EQ 3 bandes avec coupure, filtre passe-bas / passe-haut, volumes, VU-mètres, crossfader à 2 courbes, master avec limiteur doux."],
-                     ["Bibliothèque", "Dossier de musique, recherche, colonne BPM, glisser-déposer, encodeur BROWSE et boutons LOAD de la platine."],
+                     ["Bibliothèque", "Dossier de musique, recherche, colonne BPM, pré-écoute, glisser-déposer, encodeur BROWSE et boutons LOAD de la platine."],
+                     ["Plein écran", "Bouton FULL : la fenêtre occupe tout l'écran où elle se trouve et s'adapte si on la déplace sur un autre écran."],
                      ["Platines réalistes", "Vinyle irisé qui tourne avec la lecture, bras qui suit la progression du morceau, points stroboscopiques, lampe rouge."],
                      ["4 skins", "Midnight, Neon Club, Amber Mono et Pro Red / Blue."],
                      ["MIDI Learn", "Chaque potard et fader peut aussi être appris sur n'importe quel contrôleur MIDI."]],
@@ -78,7 +79,8 @@ def content(lang):
                      ["10", "Fader de pitch", "23", "LOAD A / LOAD B"],
                      ["11", "Plage du pitch : 4 / 8 / 16 / 50 %", "24", "MASTER : volume général"],
                      ["12", "SYNC et REV", "25", "Bibliothèque de morceaux"],
-                     ["13", "PITCH - / PITCH +", "", ""]],
+                     ["13", "PITCH - / PITCH +", "26", "FULL : plein écran"],
+                     ["", "", "27", "Pré-écoute de la bibliothèque"]],
            [9, 78, 9, None], {"small": True}),
           ("pb",)]
 
@@ -169,6 +171,16 @@ def content(lang):
                        "<b>Recherche</b> : tapez un ou plusieurs mots ; ils sont cherchés dans l'artiste, le titre et le nom du dossier.",
                        "<b>Colonnes</b> : numéro, artiste, titre, BPM, format, dossier. Le BPM apparaît une fois le morceau analysé, et il est mémorisé pour la prochaine fois.",
                        "<b>LIBRARY</b> (barre du haut, ou bouton bibliothèque de la platine) : bibliothèque en plein écran, formes d'onde gardées en haut."]),
+          ("h2", "Pré-écoute"),
+          ("p", "La pré-écoute fait entendre un morceau de la bibliothèque sans le charger sur une platine. Le fichier est lu directement depuis le disque, sans analyse, et démarre aussitôt."),
+          ("bullets", ["<b>PREVIEW</b> : lance la pré-écoute du morceau sélectionné ; le bouton devient <b>STOP</b> pendant la lecture.",
+                       "<b>Icône lecture</b> au début de chaque ligne : lance la pré-écoute de cette ligne, ou l'arrête si elle joue déjà. La ligne en cours affiche un petit égaliseur vert.",
+                       "<b>Suivi de la sélection</b> : pendant une pré-écoute, choisir une autre ligne (souris ou encodeur BROWSE de la platine) passe directement à ce morceau.",
+                       "<b>Barre de position</b> : cliquez ou faites glisser pour aller plus loin dans le morceau. Le temps écoulé, la durée et un petit VU-mètre sont affichés à droite.",
+                       "<b>VOL</b> : volume de la pré-écoute (double-clic : 70 %), mémorisé."]),
+          ("p", "<b>Sortie de la pré-écoute</b> (MENU > Preview output) : <b>Master (mixed in)</b>, par défaut, mélange la pré-écoute au son principal. C'est la seule possibilité avec la Discover DJ de base, qui n'a pas de sortie casque : "
+                "baissez le crossfader ou les volumes avant d'écouter devant un public. <b>Outputs 3-4 (Preview bus)</b> envoie la pré-écoute sur une deuxième sortie stéréo du plugin, à router dans Reaper "
+                "vers une autre sortie de votre interface audio (un casque par exemple) : activez les sorties 3-4 du plugin dans le routage de la fenêtre FX."),
           ("h2", "Charger un morceau"),
           ("bullets", ["Sélectionnez une ligne puis <b>LOAD A</b> ou <b>LOAD B</b> (table de mixage ou bibliothèque).",
                        "<b>Double-clic</b> sur une ligne : chargement sur la platine A si elle est à l'arrêt, sinon sur la B.",
@@ -209,6 +221,11 @@ def content(lang):
 
     # 9 -------------------------------------------------------------------------------------------------
     b += [("h1", "9. Fenêtre, skins et menu"),
+          ("h2", "Plein écran"),
+          ("p", "Le bouton <b>FULL</b> de la barre du haut (ou <b>MENU > Full screen</b>) agrandit la fenêtre à tout l'écran sur lequel elle se trouve, barre des tâches exclue, en gardant les proportions de l'interface. "
+                "Si vous déplacez la fenêtre sur un autre écran, ou si la résolution change, elle se réadapte automatiquement, même sur un écran plus petit que la taille par défaut. "
+                "Appuyez à nouveau sur FULL pour revenir à la taille et à la position d'avant. Le plein écran est mémorisé avec le projet."),
+          ("p", "Sous Windows, la fenêtre FX de Reaper est aussi replacée sur l'écran. Si Spindeck est ancré dans le docker de Reaper, seule la taille du plugin change."),
           ("h2", "Taille de la fenêtre"),
           ("p", "La fenêtre s'ouvre à <b>100 %</b> (1600 × 900 pixels), sa taille minimale. Clic droit sur le fond ou <b>MENU > Plugin size</b> : <b>100 %, 125 % ou 150 %</b>. "
                 "Le sous-menu <b>Default size (new windows)</b> choisit la taille d'ouverture des nouvelles fenêtres. On peut aussi tirer le coin inférieur droit ; les proportions sont conservées. "
@@ -224,6 +241,8 @@ def content(lang):
                      ["Refresh controller LEDs", "Renvoie l'état des LED à la platine."],
                      ["Skin", "Midnight, Neon Club, Amber Mono, Pro Red / Blue."],
                      ["Choose music folder...", "Même rôle que le bouton FOLDER."],
+                     ["Preview output", "Pré-écoute mélangée au master, ou sur les sorties 3-4 du plugin."],
+                     ["Full screen", "Plein écran (comme le bouton FULL)."],
                      ["Reaper setup help", "Rappel des réglages de la piste Reaper."],
                      ["Plugin size", "100 / 125 / 150 % et taille par défaut des nouvelles fenêtres."]],
            [56, None]),
@@ -242,7 +261,7 @@ def content(lang):
     # 11 ------------------------------------------------------------------------------------------------
     b += [("h1", "11. Caractéristiques techniques"),
           ("table", [["Format", "Instrument VST3 (Windows, macOS) et AU (macOS), binaire universel Apple Silicon / Intel"],
-                     ["Sortie", "Master stéréo ; entrée MIDI (commandes) et sortie MIDI (LED de la platine)"],
+                     ["Sorties", "Master stéréo (1-2), pré-écoute stéréo optionnelle (3-4) ; entrée MIDI (commandes) et sortie MIDI (LED de la platine)"],
                      ["Contrôleur reconnu", "ION Discover DJ (mapping d'après celui de Mixxx) ; tout contrôleur MIDI par MIDI Learn"],
                      ["Fichiers lus", "WAV, AIFF, FLAC, OGG Vorbis, MP3 ; 60 minutes maximum par morceau ; tout taux d'échantillonnage"],
                      ["Lecture", "Interpolation Hermite 4 points, démarrage ~60 ms, freinage ~200 ms, saut de position sans clic"],
@@ -252,7 +271,8 @@ def content(lang):
                      ["Filtre", "Passe-bas 20 kHz → 80 Hz, passe-haut 20 Hz → 8 kHz, résonance douce"],
                      ["Crossfader", "Courbes MIX (puissance constante) et SCRATCH (coupure franche)"],
                      ["Sortie master", "Limiteur doux, coupe-continu, silence quand les platines sont à l'arrêt"],
-                     ["Fenêtre", "1600 × 900 à 100 % ; 125 % et 150 %"],
+                     ["Fenêtre", "1600 × 900 à 100 % ; 125 % et 150 % ; plein écran adaptatif"],
+                     ["Pré-écoute", "Lecture en continu depuis le disque (tampon de 8 s), sortie master ou sorties 3-4"],
                      ["Réglages communs", "Windows : %APPDATA%\\Nine Hands DSP\\Spindeck ; macOS : ~/Library/Nine Hands DSP/Spindeck"],
                      ["Version", VERSION]],
            [40, None], {"header": False})]
