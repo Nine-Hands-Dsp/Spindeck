@@ -1442,9 +1442,12 @@ public:
         else if (track != nullptr)
         {
             g.setColour (col::text); g.setFont (fnt (20.0f, true));
-            g.drawText (track->title, b.removeFromTop (30), right ? juce::Justification::bottomRight : juce::Justification::bottomLeft, true);
+            // bloc titre + artiste centre verticalement sur le carre A / B
+            const int top = badge.getCentreY() - 22;
+            const auto lineT = b.withY (top).withHeight (24), lineA = b.withY (top + 25).withHeight (19);
+            g.drawText (track->title, lineT, just, true);
             g.setColour (col::dim); g.setFont (fnt (15.0f));
-            g.drawText (track->artist.isNotEmpty() ? track->artist + "   " + track->format : track->format, b, right ? juce::Justification::topRight : juce::Justification::topLeft, true);
+            g.drawText (track->artist.isNotEmpty() ? track->artist + "   " + track->format : track->format, lineA, just, true);
         }
         else
         {
