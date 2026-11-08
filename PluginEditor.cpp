@@ -1402,6 +1402,7 @@ public:
 
         // lettre de la platine
         auto badge = (right ? b.removeFromRight (44) : b.removeFromLeft (44)).reduced (4, 6);
+        badge = badge.withSizeKeepingCentre (badge.getWidth(), badge.getWidth());   // carre
         g.setColour (accent); g.fillRoundedRectangle (badge.toFloat(), 6);
         g.setColour (juce::Colours::black); g.setFont (fnt (26.0f, true));
         g.drawText (deck == 0 ? "A" : "B", badge, juce::Justification::centred);
