@@ -145,6 +145,27 @@ int main (int argc, char** argv)
         fa.deleteFile();
         if (auto os = fa.createOutputStream()) png.writeImageToStream (armz, *os);
     }
+    // animation : 36 images de la platine A en lecture (1/30 s entre deux images)
+    {
+        proc->theme = 0;
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+        ed->setSize (1467, 825);
+        for (int i = 0; i < 8; ++i) { run (4); mm->runDispatchLoopUntil (40); }
+        double worst = 0;
+        for (int fr = 0; fr < 36; ++fr)
+        {
+            run (6);
+            mm->runDispatchLoopUntil (5);
+            const auto t0 = juce::Time::getHighResolutionTicks();
+            auto img = ed->createComponentSnapshot ({ 70, 300, 300, 240 }, true, 2.0f);
+            worst = std::max (worst, juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0) * 1000.0);
+            juce::PNGImageFormat png;
+            auto f = out.getChildFile ("anim_" + juce::String (fr).paddedLeft ('0', 2) + ".png");
+            f.deleteFile();
+            if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
+        }
+        std::cout << "platter frame (2x) worst " << worst << " ms" << std::endl;
+    }
     proc.reset();
     return 0;
 }

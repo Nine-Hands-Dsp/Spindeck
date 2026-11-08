@@ -558,8 +558,8 @@ public:
         if (std::abs (a - angle) > 0.002f)
         {
             angle = a;
-            if (auto* e = findParentComponentOfClass<SpinEditor>()) e->askRepaint (*this, labelArea());   // seule l'etiquette bouge
-            else repaint (labelArea());
+            if (auto* e = findParentComponentOfClass<SpinEditor>()) e->askRepaint (*this, discArea());    // le disque tourne : poussieres, rayures, etiquette
+            else repaint (discArea());
         }
     }
 
@@ -586,6 +586,9 @@ public:
         g.setOpacity (1.0f);
         if (vinyl.isValid())
             g.drawImageTransformed (vinyl, juce::AffineTransform::scale (1.0f / kOver));
+
+        drawSurface (g);
+        g.setOpacity (1.0f);                     // l'etiquette ne doit pas prendre l'alpha de la derniere couleur
 
         // etiquette qui tourne
         if (label.isValid())
@@ -645,6 +648,12 @@ private:
     juce::Point<float> centre() const { return { discR() + 9.0f, getHeight() * 0.5f }; }
     juce::Point<float> pivot() const  { const float R = discR(); return { centre().x + R + 20.0f, centre().y - R * 0.60f }; }
     float armLen() const              { return discR() * 1.12f; }
+
+    juce::Rectangle<int> discArea() const
+    {
+        const float r = discR() + 2.0f;
+        return juce::Rectangle<float> (centre().x - r, centre().y - r, 2 * r, 2 * r).getSmallestIntegerContainer();
+    }
 
     juce::Rectangle<int> labelArea() const
     {
@@ -846,6 +855,68 @@ private:
         grain (g, body, 0.9f, a, std::atan2 (d.y, d.x));
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.strokePath (body, juce::PathStrokeType (0.6f));
+    }
+
+    // ------------------------------------------------------------ surface du disque qui tourne
+    // Les sillons etant des cercles, un disque parfait ne montrerait pas qu'il tourne : comme sur un vrai vinyle,
+    // ce sont les poussieres, les micro-rayures et les marques de pressage qui trahissent la rotation.
+    // Les poussieres scintillent en passant dans le reflet de la lampe.
+    struct Speck { float rho, phi, size, alpha; };
+    struct Mark  { float rho, phi, span, alpha, width; };
+    std::vector<Speck> specks;
+    std::vector<Mark> marks;
+
+    void buildSurface()
+    {
+        specks.clear(); marks.clear();
+        juce::Random rnd (4242 + deck * 31);
+        for (int i = 0; i < 110; ++i)
+            specks.push_back ({ 0.38f + 0.59f * std::sqrt (rnd.nextFloat()), rnd.nextFloat() * juce::MathConstants<float>::twoPi,
+                                0.35f + rnd.nextFloat() * (rnd.nextFloat() < 0.1f ? 1.1f : 0.5f), 0.10f + rnd.nextFloat() * 0.22f });
+        // micro-rayures dans le sens des sillons
+        for (int i = 0; i < 7; ++i)
+            marks.push_back ({ 0.42f + 0.52f * rnd.nextFloat(), rnd.nextFloat() * juce::MathConstants<float>::twoPi,
+                               0.08f + rnd.nextFloat() * 0.35f, 0.07f + rnd.nextFloat() * 0.08f, 0.5f });
+        // marques de pressage : bandes de sillons un peu plus claires sur un secteur
+        for (int i = 0; i < 3; ++i)
+        {
+            const float r0 = 0.45f + 0.45f * rnd.nextFloat(), p0 = rnd.nextFloat() * juce::MathConstants<float>::twoPi, sp = 0.6f + rnd.nextFloat() * 0.9f;
+            for (int k = 0; k < 6; ++k)
+                marks.push_back ({ r0 + k * 0.006f, p0 + k * 0.03f, sp, 0.022f, 1.2f });
+        }
+    }
+
+    void drawSurface (juce::Graphics& g)
+    {
+        if (specks.empty()) buildSurface();
+        const float R = discR() - 1.0f;
+        const auto c = centre();
+        const float lightA = juce::degreesToRadians (-135.0f);
+        auto sheenAt = [lightA] (float x, float y)
+        {
+            float th = std::atan2 (y, x) - lightA;
+            th = std::fmod (std::abs (th), juce::MathConstants<float>::pi);
+            th = juce::jmin (th, juce::MathConstants<float>::pi - th);
+            return std::exp (-(th * th) / (0.17f * 0.17f));
+        };
+
+        for (const auto& m : marks)
+        {
+            juce::Path arc;
+            const float r = m.rho * R;
+            arc.addCentredArc (c.x, c.y, r, r, 0.0f, m.phi + angle, m.phi + angle + m.span, true);
+            g.setColour (juce::Colours::white.withAlpha (m.alpha));
+            g.strokePath (arc, juce::PathStrokeType (m.width));
+        }
+        for (const auto& sp : specks)
+        {
+            const float a = sp.phi + angle;
+            const float x = std::sin (a) * sp.rho * R, y = -std::cos (a) * sp.rho * R;
+            const float glint = sheenAt (x, y);
+            g.setColour (juce::Colours::white.withAlpha (juce::jlimit (0.0f, 1.0f, sp.alpha + 0.65f * glint)));
+            const float s = sp.size * (1.0f + 0.6f * glint);
+            g.fillEllipse (c.x + x - s * 0.5f, c.y + y - s * 0.5f, s, s);
+        }
     }
 
     // ------------------------------------------------------------ images (construites par le timer, jamais dans paint)
