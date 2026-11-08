@@ -212,17 +212,18 @@ int main (int argc, char** argv)
         if (! proc->view[0].playing.load()) run (1, { juce::MidiMessage::noteOn (1, 0x4A, (juce::uint8) 127) });
         proc->post (0, spin::cmdSeekNorm, 0.993);
         for (int i = 0; i < 4; ++i) { run (4); mm->runDispatchLoopUntil (35); }
-        for (int fr = 0; fr < 60; ++fr)
+        const auto tStart = juce::Time::getMillisecondCounterHiRes();
+        for (int fr = 0; fr < 160; ++fr)                         // ~1 image d'interface (30 Hz) par capture : GIF en temps reel
         {
             run (6);
-            mm->runDispatchLoopUntil (5);
+            mm->runDispatchLoopUntil (34);
             auto img = ed->createComponentSnapshot ({ 70, 360, 330, 270 }, true, 1.5f);
             juce::PNGImageFormat png;
             auto f = out.getChildFile ("end_" + juce::String (fr).paddedLeft ('0', 2) + ".png");
             f.deleteFile();
             if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
         }
-        std::cout << "end: playing=" << proc->view[0].playing.load() << std::endl;
+        std::cout << "end: playing=" << proc->view[0].playing.load() << " frame_ms=" << (juce::Time::getMillisecondCounterHiRes() - tStart) / 160.0 << std::endl;
     }
     // souris sur la forme d'onde defilante de la platine A : clic puis glisser
     {

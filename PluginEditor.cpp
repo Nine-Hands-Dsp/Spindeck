@@ -609,10 +609,25 @@ public:
         // le bras pivote en douceur vers sa cible (pose sur le disque ou retour au repos)
         const float target = armAngleFor (rho);
         if (armAngle < -100.0f) armAngle = target;
-        const float da = target - armAngle;
-        // retour au repos 30 % plus lent que la pose sur le disque (0,125 au lieu de 0,16 par image)
-        armAngle = std::abs (da) < 0.004f ? target : armAngle + da * (rho < 0.0f ? 0.125f : 0.16f);
-        const bool armMoving = std::abs (da) > 0.004f;
+        // retour au repos : mouvement chronometre de kArmReturnSec, depart et arrivee en douceur
+        if (rho < 0.0f)
+        {
+            if (returnT < 0.0f && std::abs (target - armAngle) > 0.004f) { returnT = 0.0f; returnFrom = armAngle; }
+        }
+        else returnT = -1.0f;
+        if (returnT >= 0.0f)
+        {
+            returnT += dt;
+            const float u = juce::jmin (1.0f, returnT / kArmReturnSec);
+            armAngle = returnFrom + (target - returnFrom) * (u * u * (3.0f - 2.0f * u));
+            if (u >= 1.0f) { armAngle = target; returnT = -1.0f; }
+        }
+        else
+        {
+            const float da = target - armAngle;                            // pose sur le disque / suivi de la lecture
+            armAngle = std::abs (da) < 0.004f ? target : armAngle + da * 0.16f;
+        }
+        const bool armMoving = returnT >= 0.0f || std::abs (target - armAngle) > 0.004f;
 
         // fin de morceau : le son s'arrete mais le disque continue de tourner jusqu'a ce que le bras soit
         // revenu au repos, puis le moteur freine (~0,3 s). Purement visuel ; aucun saut de l'etiquette ensuite.
@@ -1325,6 +1340,8 @@ private:
     juce::Image vinyl, label;
     float angle = 0, lastAngle = 0, armRho = -2.0f, armAngle = -1000.0f;
     float playVel = 0, spinVel = 0, lastSpinVel = 0, spinOffset = 0, lastAudioA = 0;
+    float returnT = -1.0f, returnFrom = 0.0f;
+    static constexpr float kArmReturnSec = 2.0f;          // duree du retour du bras au repos
     juce::uint32 lastTickMs = 0;
     bool playing = false, scratching = false, scratchMode = false;
 };
