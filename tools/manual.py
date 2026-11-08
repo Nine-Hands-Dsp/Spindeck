@@ -29,7 +29,7 @@ def content(lang):
           ("table", [["2 platines", "Lecture, cue façon platine CD, sync du tempo et de la phase, marche arrière, pitch ± 4 / 8 / 16 / 50 %."],
                      ["Scratch", "Avec les jog wheels de la Discover DJ (mode SCRATCH) ou à la souris directement sur le vinyle."],
                      ["Analyse automatique", "BPM et grille de temps calculés au chargement ; le cue se place sur le premier son."],
-                     ["Table de mixage", "EQ 3 bandes avec coupure, filtre passe-bas / passe-haut, volumes, VU-mètres, crossfader à 2 courbes, master avec limiteur doux."],
+                     ["Table de mixage", "EQ HIGH / LOW avec coupure, filtre passe-bas / passe-haut, volumes, VU-mètres, crossfader à 2 courbes, master avec limiteur doux."],
                      ["Bibliothèque", "Dossier de musique, recherche, colonne BPM, pré-écoute, glisser-déposer, encodeur BROWSE et boutons LOAD de la platine."],
                      ["Plein écran", "Bouton FULL : la fenêtre occupe tout l'écran où elle se trouve et s'adapte si on la déplace sur un autre écran."],
                      ["Platines réalistes", "Vinyle irisé qui tourne avec la lecture, bras qui suit la progression du morceau, points stroboscopiques, lampe rouge."],
@@ -71,7 +71,7 @@ def content(lang):
                      ["2", "SCRATCH : mode scratch des jog wheels", "15", "CUE et PLAY"],
                      ["3", "LIBRARY : bibliothèque en plein écran", "16", "Bouton START et lampe stroboscopique"],
                      ["4", "VU-mètre master (gauche / droite)", "17", "Main : le mode scratch est actif"],
-                     ["5", "MENU : réglages, skins, taille de la fenêtre", "18", "EQ HIGH / MID / LOW et FILTER"],
+                     ["5", "MENU : réglages, skins, taille de la fenêtre", "18", "EQ HIGH / LOW et FILTER"],
                      ["6", "Formes d'onde défilantes A et B", "19", "Fader de volume de la voie"],
                      ["7", "Titre, temps restant, BPM et pitch", "20", "VU-mètres des voies A et B"],
                      ["8", "Vue d'ensemble du morceau (clic = déplacement)", "21", "Crossfader"],
@@ -147,8 +147,8 @@ def content(lang):
     # 6 -------------------------------------------------------------------------------------------------
     b += [("h1", "6. La table de mixage"),
           ("side", "mixer.png", 72, [
-              ("h2", "Égaliseur HIGH / MID / LOW"),
-              ("p", "Trois bandes séparées à 250 Hz et 2,5 kHz. Au centre (point de repère sur le potard), le son est intact. À droite : jusqu'à <b>+6 dB</b>. "
+              ("h2", "Égaliseur HIGH / LOW"),
+              ("p", "Deux potards, comme sur la Discover DJ : <b>HIGH</b> pour les aigus (au-dessus de 2,5 kHz) et <b>LOW</b> pour les basses (sous 250 Hz) ; les médiums restent à plat. Au centre (point de repère sur le potard), le son est intact. À droite : jusqu'à <b>+6 dB</b>. "
                     "À gauche : jusqu'à <b>−26 dB</b>, puis coupure totale de la bande en butée (kill)."),
               ("h2", "FILTER"),
               ("p", "Au centre : aucun effet. Vers la gauche : <b>passe-bas</b> (le son s'assombrit jusqu'à 80 Hz). Vers la droite : <b>passe-haut</b> (les basses disparaissent jusqu'à 8 kHz)."),
@@ -267,7 +267,7 @@ def content(lang):
                      ["Lecture", "Interpolation Hermite 4 points, démarrage ~60 ms, freinage ~200 ms, saut de position sans clic"],
                      ["Pitch", "± 4 / 8 / 16 / 50 %, pas de 0,1 % aux boutons"],
                      ["Analyse", "BPM 75 à 180 (précision 0,01 BPM) et grille de temps, en tâche de fond"],
-                     ["Égaliseur", "3 bandes Linkwitz-Riley 4e ordre (250 Hz / 2,5 kHz), +6 dB / −26 dB puis coupure"],
+                     ["Égaliseur", "Aigus et basses, filtres Linkwitz-Riley 4e ordre (250 Hz / 2,5 kHz), +6 dB / −26 dB puis coupure"],
                      ["Filtre", "Passe-bas 20 kHz → 80 Hz, passe-haut 20 Hz → 8 kHz, résonance douce"],
                      ["Crossfader", "Courbes MIX (puissance constante) et SCRATCH (coupure franche)"],
                      ["Sortie master", "Limiteur doux, coupe-continu, silence quand les platines sont à l'arrêt"],

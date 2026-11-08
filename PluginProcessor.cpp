@@ -465,7 +465,7 @@ void SpinProcessor::renderDecks (float* outL, float* outR, int start, int n)
         auto& d = deck[di];
         d.gVol.setTargetValue (volGain (paramValue (deckParam (pVolA, di))));
         d.gHi.setTargetValue  (eqGain (paramValue (deckParam (pHiA, di))));
-        d.gMid.setTargetValue (eqGain (paramValue (deckParam (pMidA, di))));
+        d.gMid.setTargetValue (1.0f);   // plus de potard MID : bande medium toujours a plat (parametre garde pour les anciens projets)
         d.gLow.setTargetValue (eqGain (paramValue (deckParam (pLowA, di))));
         d.gXf.setTargetValue  (di == 0 ? xa : xb);
 

@@ -1653,11 +1653,9 @@ public:
     explicit MixerPanel (SpinProcessor& p)
         : proc (p),
           hiA (p, pHiA, juce::Slider::RotaryHorizontalVerticalDrag, col::deckA, true),
-          midA (p, pMidA, juce::Slider::RotaryHorizontalVerticalDrag, col::deckA, true),
           lowA (p, pLowA, juce::Slider::RotaryHorizontalVerticalDrag, col::deckA, true),
           filtA (p, pFiltA, juce::Slider::RotaryHorizontalVerticalDrag, col::cue, true),
           hiB (p, pHiB, juce::Slider::RotaryHorizontalVerticalDrag, col::deckB, true),
-          midB (p, pMidB, juce::Slider::RotaryHorizontalVerticalDrag, col::deckB, true),
           lowB (p, pLowB, juce::Slider::RotaryHorizontalVerticalDrag, col::deckB, true),
           filtB (p, pFiltB, juce::Slider::RotaryHorizontalVerticalDrag, col::cue, true),
           volA (p, pVolA, juce::Slider::LinearVertical, col::deckA),
@@ -1668,7 +1666,7 @@ public:
           vuB ([&p] { return p.view[1].level.exchange (0.0f); }),
           loadA ("LOAD A", col::deckA), loadB ("LOAD B", col::deckB), curve ("MIX", col::dim)
     {
-        for (auto* c : std::initializer_list<juce::Component*> { &hiA, &midA, &lowA, &filtA, &hiB, &midB, &lowB, &filtB,
+        for (auto* c : std::initializer_list<juce::Component*> { &hiA, &lowA, &filtA, &hiB, &lowB, &filtB,
                                                                  &volA, &volB, &xf, &master, &vuA, &vuB, &loadA, &loadB, &curve })
             addAndMakeVisible (c);
         loadA.onDown = [this] { proc.loadSelected (0); };
@@ -1683,7 +1681,7 @@ public:
 
     void tick()
     {
-        for (auto* s : { &hiA, &midA, &lowA, &filtA, &hiB, &midB, &lowB, &filtB, &volA, &volB, &xf, &master }) s->tick();
+        for (auto* s : { &hiA, &lowA, &filtA, &hiB, &lowB, &filtB, &volA, &volB, &xf, &master }) s->tick();
         vuA.tick(); vuB.tick();
         loadA.tick(); loadB.tick(); curve.tick();
         curve.setText (proc.apvts.getRawParameterValue (kParamIds[pXfCurve])->load() > 0.5f ? "SCRATCH" : "MIX");
@@ -1719,8 +1717,8 @@ public:
         b.removeFromTop (18);
         auto colA = b.removeFromLeft (b.getWidth() / 2);
         auto colB = b;
-        layoutStrip (colA, false, hiA, midA, lowA, filtA, volA, vuA, col::deckA);
-        layoutStrip (colB, true,  hiB, midB, lowB, filtB, volB, vuB, col::deckB);
+        layoutStrip (colA, false, hiA, lowA, filtA, volA, vuA, col::deckA);
+        layoutStrip (colB, true,  hiB, lowB, filtB, volB, vuB, col::deckB);
     }
 
 private:
@@ -1728,18 +1726,19 @@ private:
     std::vector<Label> labels;
     void addLabel (const juce::String& t, juce::Rectangle<int> r, juce::Colour c) { labels.push_back ({ t, r, c }); }
 
-    void layoutStrip (juce::Rectangle<int> b, bool right, ParamSlider& hi, ParamSlider& mid, ParamSlider& lo, ParamSlider& fl,
+    // voie : HIGH, LOW (comme la Discover DJ, sans MID), FILTER, fader de volume et VU
+    void layoutStrip (juce::Rectangle<int> b, bool right, ParamSlider& hi, ParamSlider& lo, ParamSlider& fl,
                       ParamSlider& vol, Vu& vu, juce::Colour c)
     {
         auto knobs = right ? b.removeFromRight (64) : b.removeFromLeft (64);
         auto vuR = right ? b.removeFromLeft (14) : b.removeFromRight (14);
-        const int kh = knobs.getHeight() / 4;
+        const int kh = knobs.getHeight() / 3;
         int i = 0;
-        for (auto* k : { &hi, &mid, &lo, &fl })
+        for (auto* k : { &hi, &lo, &fl })
         {
             auto cell = knobs.withY (knobs.getY() + i * kh).withHeight (kh);
-            const char* names[4] = { "HIGH", "MID", "LOW", "FILTER" };
-            addLabel (names[i], cell.removeFromBottom (14), i == 3 ? col::cue : col::dim);
+            const char* names[3] = { "HIGH", "LOW", "FILTER" };
+            addLabel (names[i], cell.removeFromBottom (14), i == 2 ? col::cue : col::dim);
             k->setBounds (cell.withSizeKeepingCentre (juce::jmin (52, cell.getHeight()), juce::jmin (52, cell.getHeight())));
             ++i;
         }
@@ -1750,7 +1749,7 @@ private:
     }
 
     SpinProcessor& proc;
-    ParamSlider hiA, midA, lowA, filtA, hiB, midB, lowB, filtB, volA, volB, xf, master;
+    ParamSlider hiA, lowA, filtA, hiB, lowB, filtB, volA, volB, xf, master;
     Vu vuA, vuB;
     Pad loadA, loadB, curve;
 };
