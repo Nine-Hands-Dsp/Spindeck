@@ -172,6 +172,24 @@ int main (int argc, char** argv)
         }
         std::cout << "platter frame (2x) worst " << worst << " ms" << std::endl;
     }
+    // icone du mode scratch (main pleine)
+    {
+        proc->theme = 0;
+        proc->post (0, spin::cmdScratchMode, 1.0);
+        run (4);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+        ed->setSize (1600, 900);
+        for (int i = 0; i < 6; ++i) { run (2); mm->runDispatchLoopUntil (40); }
+        juce::PNGImageFormat png;
+        auto img = ed->createComponentSnapshot ({ 70, 360, 330, 270 }, true, 2.0f);
+        auto f = out.getChildFile ("icon_final.png");
+        f.deleteFile();
+        if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
+        auto full = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+        auto ff = out.getChildFile ("ui_final.png");
+        ff.deleteFile();
+        if (auto os = ff.createOutputStream()) png.writeImageToStream (full, *os);
+    }
     proc.reset();
     return 0;
 }

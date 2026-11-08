@@ -649,6 +649,12 @@ public:
 
 
         drawArm (g);
+
+        if (scratchMode)                                           // mode scratch : icone en bas a droite du disque
+        {
+            const float sz = juce::jmax (18.0f, R * 0.22f);
+            drawScratchIcon (g, { cx + R * 0.93f, cy + R * 0.93f }, sz, accent);
+        }
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -885,6 +891,59 @@ private:
         grain (g, body, 0.9f, a, std::atan2 (d.y, d.x));
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.strokePath (body, juce::PathStrokeType (0.6f));
+    }
+
+    // ------------------------------------------------------------ icone du mode scratch (6 propositions)
+    static void glow (juce::Graphics& g, juce::Point<float> c, float r, juce::Colour col)
+    {
+        juce::ColourGradient gl (col.withAlpha (0.45f), c.x, c.y, col.withAlpha (0.0f), c.x + r, c.y, true);
+        g.setGradientFill (gl);
+        g.fillEllipse (c.x - r, c.y - r, 2 * r, 2 * r);
+    }
+
+    // silhouette de main ouverte (une seule forme fermee), boite 24 x 24 centree sur c, hauteur s
+    static juce::Path handPath (juce::Point<float> c, float s)
+    {
+        juce::Path p;
+        p.startNewSubPath (7.2f, 23.0f);
+        p.lineTo (6.0f, 17.5f);
+        p.quadraticTo (5.2f, 15.8f, 4.0f, 14.2f);              // pouce
+        p.lineTo (2.0f, 11.6f);
+        p.quadraticTo (1.4f, 10.4f, 2.6f, 10.1f);
+        p.quadraticTo (3.6f, 9.9f, 4.4f, 11.0f);
+        p.lineTo (6.4f, 13.4f);
+        p.lineTo (6.4f, 5.0f);                                 // index
+        p.quadraticTo (7.5f, 3.0f, 8.6f, 5.0f);
+        p.lineTo (8.7f, 11.2f);
+        p.lineTo (9.1f, 11.2f);
+        p.lineTo (9.2f, 3.2f);                                 // majeur
+        p.quadraticTo (10.35f, 1.2f, 11.5f, 3.2f);
+        p.lineTo (11.6f, 11.0f);
+        p.lineTo (12.0f, 11.0f);
+        p.lineTo (12.1f, 4.0f);                                // annulaire
+        p.quadraticTo (13.2f, 2.1f, 14.3f, 4.0f);
+        p.lineTo (14.4f, 11.6f);
+        p.lineTo (14.8f, 11.6f);
+        p.lineTo (14.9f, 6.6f);                                // auriculaire
+        p.quadraticTo (15.9f, 4.9f, 16.9f, 6.6f);
+        p.lineTo (16.9f, 15.0f);
+        p.quadraticTo (16.8f, 18.5f, 15.4f, 20.5f);
+        p.lineTo (15.2f, 23.0f);
+        p.closeSubPath();
+        const float k = s / 22.0f;
+        p.applyTransform (juce::AffineTransform::translation (-9.5f, -12.0f).scaled (k).translated (c));
+        return p;
+    }
+
+    // icone du mode scratch : main pleine a la couleur de la platine, avec halo
+    static void drawScratchIcon (juce::Graphics& g, juce::Point<float> c, float s, juce::Colour acc)
+    {
+        glow (g, c, s * 0.95f, acc);
+        const auto h = handPath (c, s);
+        g.setColour (acc);
+        g.fillPath (h);
+        g.setColour (acc.brighter (0.6f).withAlpha (0.8f));
+        g.strokePath (h, juce::PathStrokeType (0.7f));
     }
 
     // ------------------------------------------------------------ surface du disque qui tourne
