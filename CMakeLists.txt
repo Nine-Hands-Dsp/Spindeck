@@ -42,6 +42,7 @@ juce_add_plugin(Spindeck
 target_sources(Spindeck PRIVATE
   PluginProcessor.cpp
   PluginEditor.cpp
+  NativeWindow.cpp
   Track.cpp)
 
 target_compile_definitions(Spindeck PUBLIC

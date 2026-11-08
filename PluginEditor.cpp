@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "WigaWindowSize.h"
 #include "BinaryData.h"
+#include "NativeWindow.h"
 #include <cmath>
 
 using namespace spin;
@@ -1755,14 +1756,135 @@ private:
 };
 
 //==============================================================================
-// bibliotheque : dossier, recherche, liste des morceaux
+// pre-ecoute : bouton lecture / arret, morceau en cours, barre de position (clic = deplacement), volume
+class PreviewStrip : public Live
+{
+public:
+    explicit PreviewStrip (SpinProcessor& p) : proc (p), btn ("PREVIEW", col::play)
+    {
+        addAndMakeVisible (btn);
+        btn.onDown = [this] { proc.togglePreviewSelected(); };
+        btn.isLit  = [this] { return proc.isPreviewing() && proc.previewPlaying.load(); };
+        vol.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        vol.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        vol.setRotaryParameters (juce::degreesToRadians (-140.0f), juce::degreesToRadians (140.0f), true);
+        vol.setRange (0.0, 1.0);
+        vol.setValue (proc.previewVolume.load(), juce::dontSendNotification);
+        vol.setDoubleClickReturnValue (true, 0.7);
+        vol.getProperties().set ("accent", (juce::int64) col::play.getARGB());
+        vol.onValueChange = [this]
+        {
+            proc.previewVolume = (float) vol.getValue();
+            auto f = WigaWindowSize::file (SpinProcessor::settingsName());
+            juce::XmlElement x ("StudioWigaSettings");
+            if (auto old = juce::XmlDocument::parse (f)) x = *old;
+            x.setAttribute ("previewVolume", vol.getValue());
+            f.getParentDirectory().createDirectory();
+            x.writeTo (f);
+        };
+        addAndMakeVisible (vol);
+    }
+
+    void tick()
+    {
+        btn.tick();
+        btn.setText (proc.isPreviewing() && proc.previewPlaying.load() ? juce::String ("STOP") : juce::String ("PREVIEW"));
+        const int st = (proc.isPreviewing() ? 1 : 0) * 100000 + (int) (proc.previewPosSec.load() * 10.0);
+        level = juce::jmax (proc.previewLevel.exchange (0.0f), level * 0.8f);
+        const int lv = (int) (meterPos (level) * 30.0f);
+        if (st != drawnState || proc.previewFile() != drawnFile || lv != drawnLevel)
+        {
+            drawnState = st; drawnFile = proc.previewFile(); drawnLevel = lv;
+            ask();
+        }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        painted();
+        const bool on = proc.isPreviewing();
+        g.setFont (fnt (14.0f, true));
+        if (on)
+        {
+            juce::String a, t;
+            spin::splitName (drawnFile.getFileNameWithoutExtension(), a, t);
+            g.setColour (col::text);
+            g.drawText (a.isNotEmpty() ? a + " - " + t : t, titleArea, juce::Justification::centredLeft, true);
+        }
+        else
+        {
+            g.setColour (col::faint);
+            g.setFont (fnt (13.0f));
+            g.drawText ("Select a track and press PREVIEW, or click the play icon of a row", titleArea, juce::Justification::centredLeft, true);
+        }
+        auto bar = barArea.toFloat();
+        g.setColour (col::screen); g.fillRoundedRectangle (bar, 3);
+        const double len = proc.previewLenSec.load();
+        const double pos = proc.previewPosSec.load();
+        if (on && len > 0)
+        {
+            const float w = (float) juce::jlimit (0.0, 1.0, pos / len) * bar.getWidth();
+            g.setColour (col::play.withAlpha (0.75f));
+            g.fillRoundedRectangle (bar.withWidth (w), 3);
+            g.setColour (juce::Colours::white);
+            g.fillRect (bar.getX() + w - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+        }
+        g.setColour (col::line); g.drawRoundedRectangle (bar, 3, 1);
+        auto lv = levelArea.toFloat();
+        g.setColour (col::screen); g.fillRoundedRectangle (lv, 2);
+        g.setColour (col::play);
+        g.fillRoundedRectangle (lv.withWidth (lv.getWidth() * juce::jlimit (0.0f, 1.0f, meterPos (level))), 2);
+        g.setColour (col::dim); g.setFont (fnt (13.0f));
+        g.drawText (on ? formatTime (pos) + " / " + formatTime (len) : juce::String ("--:-- / --:--"), timeArea, juce::Justification::centredRight);
+        g.setFont (fnt (11.0f, true));
+        g.drawText ("VOL", volLabel, juce::Justification::centredRight);
+    }
+
+    void resized() override
+    {
+        auto b = getLocalBounds();
+        btn.setBounds (b.removeFromLeft (100).reduced (0, 1));
+        b.removeFromLeft (12);
+        vol.setBounds (b.removeFromRight (30));
+        volLabel = b.removeFromRight (32);
+        b.removeFromRight (8);
+        levelArea = b.removeFromRight (60).withSizeKeepingCentre (60, 6);
+        b.removeFromRight (12);
+        timeArea = b.removeFromRight (110);
+        b.removeFromRight (8);
+        const int bw = juce::jmax (100, b.getWidth() / 2);
+        barArea = b.removeFromRight (bw).withSizeKeepingCentre (bw, 10);
+        b.removeFromRight (12);
+        titleArea = b;
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override { if (barArea.expanded (0, 8).contains (e.getPosition())) seek (e); }
+    void mouseDrag (const juce::MouseEvent& e) override { if (barArea.expanded (0, 12).contains (e.getMouseDownPosition())) seek (e); }
+
+private:
+    void seek (const juce::MouseEvent& e)
+    {
+        proc.seekPreview ((double) (e.x - barArea.getX()) / juce::jmax (1, barArea.getWidth()));
+    }
+
+    SpinProcessor& proc;
+    Pad btn;
+    juce::Slider vol;
+    juce::Rectangle<int> titleArea, barArea, timeArea, levelArea, volLabel;
+    int drawnState = -1, drawnLevel = -1;
+    juce::File drawnFile;
+    float level = 0;
+};
+
+//==============================================================================
+// bibliotheque : dossier, recherche, pre-ecoute, liste des morceaux
 class LibraryPanel : public juce::Component, private juce::TableListBoxModel
 {
 public:
-    explicit LibraryPanel (SpinProcessor& p) : proc (p), folderBtn ("FOLDER", col::dim), rescanBtn ("RESCAN", col::dim),
+    explicit LibraryPanel (SpinProcessor& p) : proc (p), preview (p), folderBtn ("FOLDER", col::dim), rescanBtn ("RESCAN", col::dim),
                                                loadA ("< LOAD A", col::deckA), loadB ("LOAD B >", col::deckB)
     {
-        for (auto* c : std::initializer_list<juce::Component*> { &table, &search, &folderBtn, &rescanBtn, &loadA, &loadB })
+        for (auto* c : std::initializer_list<juce::Component*> { &table, &search, &folderBtn, &rescanBtn, &loadA, &loadB, &preview })
             addAndMakeVisible (c);
         search.setTextToShowWhenEmpty ("Search artist, title, folder...", col::faint);
         search.setFont (fnt (15.0f));
@@ -1780,7 +1902,7 @@ public:
         table.setColour (juce::ListBox::outlineColourId, col::line);
         table.setOutlineThickness (1);
         auto& h = table.getHeader();
-        h.addColumn ("#", 1, 50, 40, 70, juce::TableHeaderComponent::notSortable);
+        h.addColumn ("#", 1, 66, 56, 90, juce::TableHeaderComponent::notSortable);
         h.addColumn ("Artist", 2, 260);
         h.addColumn ("Title", 3, 420);
         h.addColumn ("BPM", 4, 70, 50, 90);
@@ -1791,7 +1913,9 @@ public:
 
     void tick()
     {
-        folderBtn.tick(); rescanBtn.tick(); loadA.tick(); loadB.tick();
+        folderBtn.tick(); rescanBtn.tick(); loadA.tick(); loadB.tick(); preview.tick();
+        const juce::File pf = proc.isPreviewing() ? proc.previewFile() : juce::File();
+        if (pf != shownPreview) { shownPreview = pf; table.repaint(); }
         if (proc.libraryVersion != shownVersion)
         {
             shownVersion = proc.libraryVersion;
@@ -1836,7 +1960,9 @@ public:
         search.setBounds (bar.removeFromRight (360));
         bar.removeFromRight (10);
         pathArea = bar;
-        b.removeFromTop (8);
+        b.removeFromTop (6);
+        preview.setBounds (b.removeFromTop (28));
+        b.removeFromTop (6);
         table.setBounds (b);
     }
 
@@ -1854,6 +1980,27 @@ private:
         if (row < 0 || row >= (int) proc.visible.size()) return;
         const auto& e = proc.library[(size_t) proc.visible[(size_t) row]];
         juce::String s;
+        if (colId == 1)                                            // icone de pre-ecoute (lecture / en cours)
+        {
+            const bool playingRow = proc.isPreviewing() && e.file == proc.previewFile();
+            const float cx = 14.0f, cy = h * 0.5f, r = 6.0f;
+            if (playingRow)
+            {
+                g.setColour (col::play);
+                const float hs[3] = { 7.0f, 11.0f, 5.0f };       // barres = pre-ecoute en cours
+                for (int k = 0; k < 3; ++k) g.fillRect (cx - 6.0f + k * 4.5f, cy + 6.0f - hs[k], 3.0f, hs[k]);
+            }
+            else
+            {
+                juce::Path tri; tri.addTriangle (cx - r * 0.55f, cy - r, cx - r * 0.55f, cy + r, cx + r * 0.85f, cy);
+                g.setColour (selected ? col::text : col::faint);
+                g.fillPath (tri);
+            }
+            g.setColour (selected ? col::text : col::dim);
+            g.setFont (fnt (14.0f));
+            g.drawText (juce::String (row + 1), 26, 0, w - 30, h, juce::Justification::centredRight, true);
+            return;
+        }
         switch (colId)
         {
             case 1: s = juce::String (row + 1); break;
@@ -1870,6 +2017,16 @@ private:
     }
 
     void selectedRowsChanged (int row) override { proc.selected = row; }
+
+    // clic sur l'icone de lecture (colonne #) : pre-ecoute de la ligne, ou arret si elle joue deja
+    void cellClicked (int row, int colId, const juce::MouseEvent& e) override
+    {
+        if (colId != 1 || e.x > 26 || row < 0 || row >= (int) proc.visible.size()) return;
+        proc.selected = row;
+        table.selectRow (row);
+        proc.togglePreviewSelected();
+        table.repaint();
+    }
 
     void cellDoubleClicked (int row, int, const juce::MouseEvent&) override
     {
@@ -1898,9 +2055,11 @@ public:
 
 private:
     SpinProcessor& proc;
+    PreviewStrip preview;
     juce::TableListBox table;
     juce::TextEditor search;
     Pad folderBtn, rescanBtn, loadA, loadB;
+    juce::File shownPreview;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Rectangle<int> pathArea, countArea;
     int shownVersion = -1;
@@ -1912,12 +2071,14 @@ private:
 class TopBar : public Live
 {
 public:
-    explicit TopBar (SpinProcessor& p) : proc (p), scratch ("SCRATCH", col::deckA), menu ("MENU", col::dim), libBtn ("LIBRARY", col::dim)
+    explicit TopBar (SpinProcessor& p) : proc (p), scratch ("SCRATCH", col::deckA), menu ("MENU", col::dim), libBtn ("LIBRARY", col::dim), full ("FULL", col::dim)
     {
         logo = col::bg.getBrightness() > 0.5f   // logo noir sur fond clair, blanc sur fond sombre
              ? juce::ImageCache::getFromMemory (BinaryData::nine_hands_logo_noir_png, BinaryData::nine_hands_logo_noir_pngSize)
              : juce::ImageCache::getFromMemory (BinaryData::nine_hands_logo_blanc_png, BinaryData::nine_hands_logo_blanc_pngSize);
-        for (auto* c : { &scratch, &menu, &libBtn }) addAndMakeVisible (c);
+        for (auto* c : { &scratch, &menu, &libBtn, &full }) addAndMakeVisible (c);
+        full.onDown = [this] { if (auto* e = findParentComponentOfClass<SpinEditor>()) e->toggleFullScreen(); };
+        full.isLit  = [this] { auto* e = findParentComponentOfClass<SpinEditor>(); return e != nullptr && e->isFullScreen(); };
         scratch.onDown = [this] { proc.post (0, cmdScratchMode, proc.scratchMode.load() ? 0.0 : 1.0); };
         scratch.isLit  = [this] { return proc.scratchMode.load(); };
         libBtn.onDown  = [this] { proc.libraryToggle = ! proc.libraryToggle.load(); };
@@ -1928,7 +2089,7 @@ public:
 
     void tick()
     {
-        scratch.tick(); menu.tick(); libBtn.tick();
+        scratch.tick(); menu.tick(); libBtn.tick(); full.tick();
         const int act = proc.midiActivity.load();
         if (act != lastActivity) { lastActivity = act; blink = 6; }
         const bool on = blink > 0;
@@ -1981,6 +2142,8 @@ public:
     {
         auto b = getLocalBounds().reduced (10, 8);
         menu.setBounds (b.removeFromRight (80));
+        b.removeFromRight (8);
+        full.setBounds (b.removeFromRight (70));
         b.removeFromRight (16);
         vuArea = b.removeFromRight (180).withSizeKeepingCentre (180, 16).translated (0, 6);
         b.removeFromRight (20);
@@ -1994,7 +2157,7 @@ public:
 
 private:
     SpinProcessor& proc;
-    Pad scratch, menu, libBtn;
+    Pad scratch, menu, libBtn, full;
     juce::Image logo;
     juce::Rectangle<int> ctlArea, vuArea;
     int lastActivity = 0, blink = 0, lastPx = -1, lastCtl = -1;
@@ -2090,6 +2253,10 @@ void SpinContent::showMenu()
     m.addSubMenu ("Skin", skins);
     m.addSeparator();
     m.addItem (16, "Choose music folder...");
+    juce::PopupMenu pout;
+    pout.addItem (50, "Master (mixed in)", true, proc.previewOutput.load() == 0);
+    pout.addItem (51, "Outputs 3-4 (Preview bus)", true, proc.previewOutput.load() == 1);
+    m.addSubMenu ("Preview output", pout);
     m.addItem (17, "Reaper setup help");
 
     const int cur = ed != nullptr ? ed->getScaleIndex() : -1;
@@ -2104,7 +2271,8 @@ void SpinContent::showMenu()
     size.addSeparator();
     size.addSubMenu ("Default size (new windows)", defSizes);
     m.addSeparator();
-    m.addSubMenu ("Plugin size", size);
+    m.addItem (60, "Full screen", ed != nullptr, ed != nullptr && ed->isFullScreen());
+    m.addSubMenu ("Plugin size", size, ed == nullptr || ! ed->isFullScreen());
 
     juce::Component::SafePointer<SpinContent> safe (this);
     m.showMenuAsync (juce::PopupMenu::Options(), [safe] (int r)
@@ -2126,6 +2294,8 @@ void SpinContent::showMenu()
             case 10: case 11: p.controller = r - 10; saveSetting ("controller", r - 10); break;
             case 12: p.invertXf = ! p.invertXf.load(); saveSetting ("invertXf", p.invertXf.load() ? 1 : 0); break;
             case 40: case 41: case 42: case 43: p.jogSens = r - 40; saveSetting ("jogSens", r - 40); break;
+            case 50: case 51: p.previewOutput = r - 50; saveSetting ("previewOutput", r - 50); break;
+            case 60: if (e) e->toggleFullScreen(); break;
             case 15: p.refreshLeds(); break;
             case 16: safe->library.chooseFolder(); break;
             case 17:
@@ -2161,10 +2331,9 @@ SpinEditor::SpinEditor (SpinProcessor& p) : juce::AudioProcessorEditor (&p), pro
     content = std::make_unique<SpinContent> (proc);
     addAndMakeVisible (*content);
     setResizable (true, true);
-    const int minW = (int) std::lround (kRefW * kDefaultScale);          // jamais plus petite que la taille par defaut
-    const int maxW = 2400;
-    setResizeLimits (minW, (int) std::lround ((double) minW * kH / kW), maxW, (int) std::lround ((double) maxW * kH / kW));
+    normalLimits();
     getConstrainer()->setFixedAspectRatio ((double) kW / (double) kH);
+    if (proc.uiFullScreen) openTicks = 6;                      // plein ecran rouvert une fois la fenetre affichee
     const int saved = juce::jlimit (-1, 2, proc.uiScaleIdx);
     if (saved >= 0) setScaleIndex (saved);
     else            applyScaleIndex (WigaWindowSize::defaultIndex (SpinProcessor::settingsName(), numSizes));
@@ -2172,6 +2341,70 @@ SpinEditor::SpinEditor (SpinProcessor& p) : juce::AudioProcessorEditor (&p), pro
 }
 
 SpinEditor::~SpinEditor() { stopTimer(); }
+
+void SpinEditor::normalLimits()
+{
+    const int minW = (int) std::lround (kRefW * kDefaultScale);          // jamais plus petite que la taille par defaut
+    const int maxW = 2400;
+    setResizeLimits (minW, (int) std::lround ((double) minW * kH / kW), maxW, (int) std::lround ((double) maxW * kH / kW));
+}
+
+void SpinEditor::toggleFullScreen()
+{
+    if (! fullScreen)
+    {
+        savedW = getWidth();
+        haveSavedRoot = false;
+        if (auto* peer = getPeer())
+        {
+            juce::Rectangle<int> root, self;
+            if (nh::hostWindowRects (peer->getNativeHandle(), root, self)) { savedRootPhys = root.getTopLeft(); haveSavedRoot = true; }
+        }
+        fullScreen = true;
+        fitToScreen();
+    }
+    else
+    {
+        fullScreen = false;
+        normalLimits();
+        const int w = juce::jmax ((int) std::lround (kRefW * kDefaultScale), savedW);
+        setSize (w, (int) std::lround ((double) w * kH / kW));
+        restoreTicks = haveSavedRoot ? 8 : 0;                  // remet la fenetre ou elle etait, une fois l'hote redimensionne
+    }
+    proc.uiFullScreen = fullScreen;
+}
+
+void SpinEditor::fitToScreen()
+{
+    auto& displays = juce::Desktop::getInstance().getDisplays();
+    const auto* d = displays.getDisplayForRect (getScreenBounds());
+    if (d == nullptr) d = displays.getPrimaryDisplay();
+    if (d == nullptr) return;
+    const auto area = d->userArea;                             // ecran sans la barre des taches / le Dock
+
+    // place prise par la fenetre de l'hote autour du plugin (barre de titre, barre des presets de Reaper...)
+    int chromeW = 0, chromeH = 72;
+    fsCanMove = false;
+    if (auto* peer = getPeer())
+    {
+        juce::Rectangle<int> root, self;
+        if (nh::hostWindowRects (peer->getNativeHandle(), root, self))
+        {
+            const double sc = juce::jmax (0.5, d->scale);
+            chromeW = juce::jmax (0, (int) std::lround ((root.getWidth()  - self.getWidth())  / sc));
+            chromeH = juce::jmax (0, (int) std::lround ((root.getHeight() - self.getHeight()) / sc));
+            fsCanMove = chromeW < 500 && chromeH < 300;        // fenetre FX flottante (jamais la fenetre principale de Reaper)
+        }
+    }
+    const int availW = juce::jmax (320, area.getWidth() - chromeW);
+    const int availH = juce::jmax (180, area.getHeight() - chromeH);
+    const int w = juce::jmin (availW, (int) std::floor (availH * (double) kW / kH));
+    const int h = (int) std::lround ((double) w * kH / kW);
+    setResizeLimits (juce::jmin (640, w), juce::jmin (360, h), juce::jmax (7680, w), juce::jmax (4320, h));
+    setSize (w, h);
+    fsArea = area;
+    placeTicks = fsCanMove ? 8 : 0;
+}
 
 // changement de skin : on reconstruit toute l'interface (couleurs, images en cache) apres la fermeture du menu
 void SpinEditor::rebuildContent()
@@ -2226,6 +2459,31 @@ void SpinEditor::timerCallback()
     const auto now = juce::Time::getMillisecondCounter();
     if ((void*) getPeer() != lastPeer || now - lastRendererCheck >= 1000) useSoftwareRenderer();
     content->tick();
+
+    // plein ecran : placement de la fenetre de l'hote, suivi de l'ecran (deplacement, resolution)
+    if (openTicks > 0 && --openTicks == 0 && ! fullScreen && isShowing()) toggleFullScreen();
+    if (auto* peer = getPeer())
+    {
+        auto& displays = juce::Desktop::getInstance().getDisplays();
+        if (placeTicks > 0 && --placeTicks == 0)
+        {
+            juce::Rectangle<int> root, self;
+            if (nh::hostWindowRects (peer->getNativeHandle(), root, self))
+            {
+                const auto ap = displays.logicalToPhysical (fsArea);
+                if (! ap.contains (root))
+                    nh::moveHostWindow (peer->getNativeHandle(), ap.getX() + juce::jmax (0, (ap.getWidth() - root.getWidth()) / 2), ap.getY());
+            }
+        }
+        if (restoreTicks > 0 && --restoreTicks == 0 && haveSavedRoot)
+            nh::moveHostWindow (peer->getNativeHandle(), savedRootPhys.x, savedRootPhys.y);
+        if (fullScreen && placeTicks == 0 && now - lastFsCheck >= 500)
+        {
+            lastFsCheck = now;
+            if (const auto* d = displays.getDisplayForRect (getScreenBounds()))
+                if (d->userArea != fsArea) fitToScreen();
+        }
+    }
     // chien de garde : une demande de dessin non servie depuis 1,5 s -> on relance le rendu
     if (repaintAskedMs != 0 && isShowing() && now - repaintAskedMs > 1500)
     {
@@ -2264,6 +2522,7 @@ int SpinEditor::getScaleIndex() const
 
 void SpinEditor::setScaleIndex (int idx)
 {
+    if (fullScreen) { fullScreen = false; proc.uiFullScreen = false; normalLimits(); }
     idx = juce::jlimit (-1, numSizes - 1, idx);
     proc.uiScaleIdx = idx;
     applyScaleIndex (idx < 0 ? WigaWindowSize::defaultIndex (SpinProcessor::settingsName(), numSizes) : idx);

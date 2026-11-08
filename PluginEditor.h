@@ -26,6 +26,11 @@ public:
     void askRepaint (juce::Component& c);
     void askRepaint (juce::Component& c, juce::Rectangle<int> area);
     void rebuildContent();                  // nouveau skin
+
+    // plein ecran : la fenetre prend tout l'ecran ou elle se trouve (barre des taches exclue) et suit
+    // l'ecran si on la deplace ; elle peut alors descendre sous la taille par defaut sur un petit ecran
+    void toggleFullScreen();
+    bool isFullScreen() const { return fullScreen; }
     void notePainted() { lastPaintMs = juce::Time::getMillisecondCounter(); repaintAskedMs = 0; }
 
 private:
@@ -35,7 +40,15 @@ private:
 
     SpinProcessor& proc;
     std::unique_ptr<SpinContent> content;
+    void fitToScreen();
+    void normalLimits();
     void* lastPeer = nullptr;
+    bool fullScreen = false, fsCanMove = false;
+    int savedW = 0, placeTicks = 0, restoreTicks = 0, openTicks = 0;
+    juce::Rectangle<int> fsArea;
+    juce::Point<int> savedRootPhys;
+    bool haveSavedRoot = false;
+    juce::uint32 lastFsCheck = 0;
     juce::uint32 lastRendererCheck = 0, lastPaintMs = 0, repaintAskedMs = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpinEditor)
 };

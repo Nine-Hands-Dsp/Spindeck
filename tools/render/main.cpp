@@ -257,6 +257,47 @@ int main (int argc, char** argv)
         const double fpp = 10.0 * 44100.0 / lane->getWidth();
         std::cout << "lane click: +" << (p1 - p0) / fpp << " px (expected 200)  drag: " << (p2 - p1) / fpp << " px (expected -300)" << std::endl;
     }
+    // pre-ecoute : ligne selectionnee, lecture, deplacement, suivi de la selection, arret
+    {
+        while (proc->view[0].playing.load()) run (1, { juce::MidiMessage::noteOn (1, 0x4A, (juce::uint8) 127) });
+        if (proc->view[1].playing.load()) run (1, { juce::MidiMessage::noteOn (1, 0x4C, (juce::uint8) 127) });
+        run (400);
+        proc->selected = 0;
+        proc->togglePreviewSelected();
+        maxAbs = 0; run (200);
+        std::cout << "preview: active=" << proc->isPreviewing() << " pos=" << proc->previewPosSec.load() << " s peak=" << maxAbs
+                  << " file=" << proc->previewFile().getFileName() << std::endl;
+        proc->seekPreview (0.5);
+        run (40);
+        std::cout << "preview seek 50%: pos=" << proc->previewPosSec.load() << " / " << proc->previewLenSec.load() << std::endl;
+        proc->selected = 1;
+        for (int i = 0; i < 6; ++i) { mm->runDispatchLoopUntil (20); run (4); }
+        std::cout << "preview follows selection: " << proc->previewFile().getFileName() << " pos=" << proc->previewPosSec.load() << std::endl;
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+        ed->setSize (1600, 900);
+        for (int i = 0; i < 6; ++i) { run (4); mm->runDispatchLoopUntil (30); }
+        auto img = ed->createComponentSnapshot ({ 0, 630, 1600, 270 }, true, 1.5f);
+        juce::PNGImageFormat png;
+        auto f = out.getChildFile ("preview_strip.png");
+        f.deleteFile();
+        if (auto os = f.createOutputStream()) png.writeImageToStream (img, *os);
+        proc->stopPreview();
+        maxAbs = 0; run (60); maxAbs = 0; run (40);
+        std::cout << "preview stopped: active=" << proc->isPreviewing() << " peak=" << maxAbs << std::endl;
+
+        // plein ecran sur l'ecran virtuel
+        auto* se = dynamic_cast<SpinEditor*> (ed.get());
+        se->toggleFullScreen();
+        for (int i = 0; i < 4; ++i) { run (2); mm->runDispatchLoopUntil (30); }
+        const auto* disp = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+        std::cout << "fullscreen: screen " << disp->userArea.toString() << " -> editor " << ed->getWidth() << "x" << ed->getHeight() << std::endl;
+        auto fsImg = ed->createComponentSnapshot (ed->getLocalBounds(), true, 0.5f);
+        auto ff = out.getChildFile ("fullscreen.png");
+        ff.deleteFile();
+        if (auto os = ff.createOutputStream()) png.writeImageToStream (fsImg, *os);
+        se->toggleFullScreen();
+        std::cout << "fullscreen off -> " << ed->getWidth() << "x" << ed->getHeight() << std::endl;
+    }
     proc.reset();
     return 0;
 }

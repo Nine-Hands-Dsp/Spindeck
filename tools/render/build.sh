@@ -30,7 +30,7 @@ for f in $(for m in $MODS; do ls "$JUCE"/modules/$m/$m.cpp "$JUCE"/modules/$m/${
 done
 wait
 gcc -O2 -fPIC -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -I$JUCE/modules -c "$JUCE/modules/juce_graphics/juce_graphics_Sheenbidi.c" -o "$OUT/obj/sheenbidi.o"
-for f in Track PluginProcessor PluginEditor; do $CXX -Wall -Wextra -Wno-unused-parameter -c "$SRC/$f.cpp" -o "$OUT/obj/$f.o"; done
+for f in Track PluginProcessor PluginEditor NativeWindow; do $CXX -Wall -Wextra -Wno-unused-parameter -c "$SRC/$f.cpp" -o "$OUT/obj/$f.o"; done
 $CXX -c "$SRC/tools/render/main.cpp" -o "$OUT/obj/main.o"
 $CXX -c "$OUT/gen/BinaryData.cpp" -o "$OUT/obj/BinaryData.o"
 g++ -o "$OUT/SpinRender" "$OUT"/obj/*.o $(pkg-config --libs freetype2 fontconfig) -lX11 -ldl -lpthread -lrt

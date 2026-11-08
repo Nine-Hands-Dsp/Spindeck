@@ -105,6 +105,19 @@ public:
     int libraryVersion = 0;                                    // change a chaque modification
     std::atomic<bool> libraryToggle { false };                 // bouton bibliotheque de la platine
 
+    // pre-ecoute de la bibliotheque (lecture en continu depuis le disque, sans analyse)
+    void startPreview (const juce::File& f);
+    void stopPreview();
+    void togglePreviewSelected();
+    void seekPreview (double norm);
+    bool isPreviewing() const { return previewActive; }
+    juce::File previewFile() const { return previewPath; }
+    std::atomic<double> previewPosSec { 0 }, previewLenSec { 0 };
+    std::atomic<bool>   previewPlaying { false };
+    std::atomic<float>  previewVolume { 0.7f };
+    std::atomic<int>    previewOutput { 0 };                   // 0 = melangee au master, 1 = sorties 3-4 (bus Preview)
+    std::atomic<float>  previewLevel { 0 };
+
     // reglages
     std::atomic<int>  controller { 0 };                        // 0 = ION Discover DJ, 1 = aucun (MIDI Learn seul)
     std::atomic<bool> invertXf { true };                       // l'ION Discover DJ envoie son crossfader a l'envers
@@ -113,6 +126,7 @@ public:
     std::atomic<int>  learnTarget { -1 };                      // parametre en attente de MIDI Learn
     std::atomic<int>  ccMap[128];                              // CC appris -> parametre (-1)
     int uiScaleIdx = -1;
+    bool uiFullScreen = false;                                 // plein ecran memorise avec le projet
 
     static juce::String settingsName() { return "Spindeck"; }
 
@@ -200,6 +214,30 @@ private:
     std::map<juce::String, float> bpmCache;
     bool bpmCacheDirty = false;
     int cacheSaveCountdown = 0;
+
+    // pre-ecoute : lecteur cree sur le thread de messages, transmis au thread audio par pointeur atomique
+    struct Preview
+    {
+        std::unique_ptr<juce::AudioFormatReader> reader;     // BufferingAudioReader (lit en avance sur previewThread)
+        double sampleRate = 44100.0;
+        juce::int64 length = 0;
+        int id = 0;
+    };
+    juce::TimeSliceThread previewThread { "Spindeck preview" };
+    std::vector<std::unique_ptr<Preview>> previewHeld;           // lecteurs encore utilisables par l'audio
+    std::atomic<Preview*> pendingPreview { nullptr };
+    std::atomic<int> previewAppliedId { 0 };
+    std::atomic<bool> previewStopReq { false };
+    std::atomic<double> previewSeekReq { -1.0 };
+    Preview* pv = nullptr;                                      // thread audio
+    double pvPos = 0;
+    bool pvPlaying = false;
+    float pvGain = 0, pvFade = 0;
+    juce::AudioBuffer<float> pvScratch;
+    int previewIdCounter = 0, previewFollowSel = -2;
+    bool previewActive = false;
+    juce::File previewPath;
+    void renderPreview (juce::AudioBuffer<float>& buffer, int n);
 
     friend class LoadJob;
     friend class ScanJob;

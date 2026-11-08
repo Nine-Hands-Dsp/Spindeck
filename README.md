@@ -11,7 +11,7 @@ Windows and macOS (VST3, plus AU on macOS).
 - Jog wheel without scratch mode: pitch bend while playing, audible search when stopped.
 - Mixer: 3-band DJ EQ (kill on the left), filter (low-pass left / high-pass right), volume, crossfader (Mix or Scratch curve), master with soft limiter.
 - BPM and beat grid detected automatically when a track is loaded.
-- Library: music folder, search, BPM column; BROWSE knob + LOAD A / LOAD B on the controller, drag and drop from the list or from Explorer / Finder.
+- Library: music folder, search, BPM column, streaming preview (PREVIEW button or play icon of a row, seek bar, volume; follows the selection; MENU > Preview output: master or outputs 3-4); BROWSE knob + LOAD A / LOAD B on the controller, drag and drop from the list or from Explorer / Finder.
 - Controller LEDs (play, cue, sync beat, reverse, scratch) driven back over MIDI.
 - Every knob / fader is automatable and can be MIDI-learned (right-click > MIDI Learn).
 - Formats: WAV, AIFF, FLAC, OGG, MP3 (plus M4A through the OS decoders). Tracks up to 60 min.
@@ -32,6 +32,7 @@ Scratch sensitivity of the jog wheels: MENU > Scratch sensitivity (25 / 50 / 75 
 The mouse on the on-screen platter always follows the record 1:1.
 
 Window: 100 % (1600 x 900, default and minimum), 125 %, 150 % (right-click or MENU > Plugin size).
+FULL button (or MENU > Full screen): the window fills the screen it is on (taskbar excluded), follows it when moved to another screen, and can go below 100 % on a small screen.
 MENU > Controller > None turns the preset off (MIDI Learn only).
 
 ## Build

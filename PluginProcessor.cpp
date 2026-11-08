@@ -155,7 +155,8 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
 }
 
 SpinProcessor::SpinProcessor()
-    : AudioProcessor (BusesProperties().withOutput ("Master", juce::AudioChannelSet::stereo(), true)),
+    : AudioProcessor (BusesProperties().withOutput ("Master", juce::AudioChannelSet::stereo(), true)
+                                         .withOutput ("Preview", juce::AudioChannelSet::stereo(), false)),
       apvts (*this, nullptr, "SPINDECK", makeLayout())
 {
     formats.registerBasicFormats();
@@ -177,11 +178,14 @@ SpinProcessor::SpinProcessor()
         controller = x->getIntAttribute ("controller", 0);
         invertXf = x->getBoolAttribute ("invertXf", true);
         jogSens = juce::jlimit (0, 3, x->getIntAttribute ("jogSens", 1));
+        previewOutput = juce::jlimit (0, 1, x->getIntAttribute ("previewOutput", 0));
+        previewVolume = (float) juce::jlimit (0.0, 1.0, x->getDoubleAttribute ("previewVolume", 0.7));
         theme = juce::jlimit (0, 3, x->getIntAttribute ("skin", 0));
     }
     if (! libraryFolder.isDirectory())
         libraryFolder = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
     loadLibraryCache();
+    previewThread.startThread (juce::Thread::Priority::normal);
     rescanLibrary();
     startTimerHz (60);
 }
@@ -190,13 +194,23 @@ SpinProcessor::~SpinProcessor()
 {
     stopTimer();
     pool.removeAllJobs (true, 4000);
+    pendingPreview = nullptr;
+    pv = nullptr;
+    previewHeld.clear();
+    previewThread.stopThread (2000);
     if (bpmCacheDirty) saveLibraryCache();
 }
 
 bool SpinProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
-        && layouts.getMainInputChannelSet().isDisabled();
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo()) return false;
+    if (! layouts.getMainInputChannelSet().isDisabled()) return false;
+    if (layouts.outputBuses.size() > 1)
+    {
+        const auto& pb = layouts.outputBuses.getReference (1);
+        if (! pb.isDisabled() && pb != juce::AudioChannelSet::stereo()) return false;
+    }
+    return true;
 }
 
 void SpinProcessor::prepareToPlay (double sr, int block)
@@ -219,6 +233,7 @@ void SpinProcessor::prepareToPlay (double sr, int block)
     gMaster.setCurrentAndTargetValue (volGain (paramValue (pMaster)));
     pitchRepeatDelay = (int) (sr * 0.35);
     pitchRepeatEvery = (int) (sr * 0.05);
+    pvScratch.setSize (2, 512 * 5 + 16);                      // jusqu'a 192 kHz lu a 44,1 kHz, par tranches de 512
     ledRefresh = true;
 }
 
@@ -656,6 +671,8 @@ void SpinProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     }
     if (done < n) renderDecks (L, R, done, n - done);
 
+    renderPreview (buffer, n);
+
     midi.clear();                    // pas de renvoi des messages de la platine (boucle)
     sendLeds (midi);                 // LED de la Discover DJ (sortie MIDI de la piste vers la platine)
 
@@ -697,6 +714,22 @@ void SpinProcessor::timerCallback()
     }
 
     publishLoaded();
+
+    // pre-ecoute : lecteurs remplaces, fin du morceau, suivi de la selection (souris ou encodeur BROWSE)
+    {
+        const int applied = previewAppliedId.load();
+        while (previewHeld.size() > 1 && previewHeld.front()->id < applied && pendingPreview.load() != previewHeld.front().get())
+            previewHeld.erase (previewHeld.begin());
+        if (previewActive && ! previewPlaying.load() && pendingPreview.load() == nullptr && applied == previewIdCounter
+            && previewPosSec.load() >= previewLenSec.load() - 0.05)
+            previewActive = false;
+        if (previewActive && selected != previewFollowSel && selected >= 0 && selected < (int) visible.size())
+        {
+            previewFollowSel = selected;
+            const auto f = library[(size_t) visible[(size_t) selected]].file;
+            if (f != previewPath) startPreview (f);
+        }
+    }
 
     // pistes qui ne servent plus a l'audio
     for (int di = 0; di < 2; ++di)
@@ -863,6 +896,124 @@ void SpinProcessor::saveLibraryCache()
 }
 
 //==============================================================================
+// pre-ecoute
+void SpinProcessor::startPreview (const juce::File& f)
+{
+    std::unique_ptr<juce::AudioFormatReader> r (formats.createReaderFor (f));
+    if (r == nullptr || r->lengthInSamples <= 0 || r->sampleRate <= 0) return;
+    auto p = std::make_unique<Preview>();
+    p->sampleRate = r->sampleRate;
+    p->length = r->lengthInSamples;
+    p->id = ++previewIdCounter;
+    auto* buffered = new juce::BufferingAudioReader (r.release(), previewThread, (int) (p->sampleRate * 8.0));
+    buffered->setReadTimeout (0);                              // jamais d'attente dans le thread audio : silence si pas encore lu
+    p->reader.reset (buffered);
+    previewLenSec = (double) p->length / p->sampleRate;
+    previewPosSec = 0;
+    previewPath = f;
+    previewActive = true;
+    previewPlaying = true;
+    previewStopReq = false;
+    pendingPreview.store (p.get());
+    previewHeld.push_back (std::move (p));
+}
+
+void SpinProcessor::stopPreview()
+{
+    previewStopReq = true;
+    previewActive = false;
+}
+
+void SpinProcessor::togglePreviewSelected()
+{
+    if (selected < 0 || selected >= (int) visible.size()) return;
+    const auto f = library[(size_t) visible[(size_t) selected]].file;
+    if (previewActive && previewPath == f) { stopPreview(); return; }
+    previewFollowSel = selected;
+    startPreview (f);
+}
+
+void SpinProcessor::seekPreview (double norm)
+{
+    if (previewActive) previewSeekReq = juce::jlimit (0.0, 1.0, norm);
+}
+
+void SpinProcessor::renderPreview (juce::AudioBuffer<float>& buffer, int n)
+{
+    if (auto* p = pendingPreview.exchange (nullptr))
+    {
+        pv = p; pvPos = 0; pvPlaying = true; pvFade = 0;
+        previewAppliedId.store (p->id);
+    }
+    if (previewStopReq.exchange (false)) pvPlaying = false;
+    if (pv == nullptr) { previewLevel = 0; return; }
+
+    if (const double sk = previewSeekReq.exchange (-1.0); sk >= 0.0)
+    {
+        pvPos = sk * (double) pv->length;
+        pvPlaying = true; pvFade = 0;
+    }
+
+    // destination : melangee au master, ou bus Preview (sorties 3-4) s'il est actif
+    float* dl = buffer.getWritePointer (0);
+    float* dr = buffer.getWritePointer (1);
+    bool mixed = true;
+    if (previewOutput.load() == 1 && getBusCount (false) > 1)
+    {
+        auto pbus = getBusBuffer (buffer, false, 1);
+        if (pbus.getNumChannels() >= 2) { dl = pbus.getWritePointer (0); dr = pbus.getWritePointer (1); mixed = false; }
+    }
+
+    const float target = pvPlaying ? previewVolume.load() * previewVolume.load() : 0.0f;
+    if (! pvPlaying && pvGain < 1e-4f) { pvGain = 0; previewPlaying = false; previewLevel = 0; return; }
+
+    const double ratio = pv->sampleRate / hostRate;
+    float peak = 0;
+    int done = 0;
+    while (done < n)
+    {
+        const int chunk = juce::jmin (512, n - done);
+        const auto start = (juce::int64) std::floor (pvPos);
+        const int need = juce::jmin (pvScratch.getNumSamples(), (int) std::ceil (chunk * ratio) + 3);
+        pvScratch.clear();
+        if (start < pv->length)
+            pv->reader->read (&pvScratch, 0, need, start, true, true);
+        const float* sl = pvScratch.getReadPointer (0);
+        const float* sr = pv->reader->numChannels > 1 ? pvScratch.getReadPointer (1) : sl;
+        double frac = pvPos - (double) start;
+        for (int i = 0; i < chunk; ++i)
+        {
+            const int k = (int) frac;
+            const float t = (float) (frac - k);
+            float l = 0, r = 0;
+            if (k + 1 < need)
+            {
+                l = sl[k] + (sl[k + 1] - sl[k]) * t;
+                r = sr[k] + (sr[k + 1] - sr[k]) * t;
+            }
+            pvGain += (target - pvGain) * 0.002f;                 // fondu ~10 ms (marche, arret, volume)
+            pvFade = std::min (1.0f, pvFade + 1.0f / 256.0f);     // entree sans clic apres un saut
+            const float g = pvGain * pvFade;
+            l *= g; r *= g;
+            peak = std::max (peak, std::max (std::abs (l), std::abs (r)));
+            if (mixed)
+            {
+                dl[done + i] = juce::jlimit (-1.0f, 1.0f, dl[done + i] + l);
+                dr[done + i] = juce::jlimit (-1.0f, 1.0f, dr[done + i] + r);
+            }
+            else { dl[done + i] += l; dr[done + i] += r; }
+            frac += ratio;
+        }
+        pvPos += chunk * ratio;
+        done += chunk;
+        if (pvPos >= (double) pv->length) { pvPos = (double) pv->length; pvPlaying = false; break; }
+    }
+    previewPosSec.store (pvPos / pv->sampleRate, std::memory_order_relaxed);
+    previewPlaying.store (pvPlaying, std::memory_order_relaxed);
+    previewLevel.store (std::max (peak, previewLevel.load (std::memory_order_relaxed)), std::memory_order_relaxed);
+}
+
+//==============================================================================
 void SpinProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     auto state = apvts.copyState();
@@ -874,6 +1025,7 @@ void SpinProcessor::getStateInformation (juce::MemoryBlock& dest)
         xml->setAttribute ("cue" + s, view[di].cue.load());
     }
     xml->setAttribute ("uiScale", uiScaleIdx);
+    xml->setAttribute ("uiFullScreen", uiFullScreen);
     xml->setAttribute ("scratchMode", scratchMode.load());
     juce::String map;
     for (int cc = 0; cc < 128; ++cc) if (ccMap[cc].load() >= 0) map << cc << ":" << kParamIds[ccMap[cc].load()] << ";";
@@ -887,6 +1039,7 @@ void SpinProcessor::setStateInformation (const void* data, int size)
     if (xml == nullptr || ! xml->hasTagName (apvts.state.getType())) return;
     apvts.replaceState (juce::ValueTree::fromXml (*xml));
     uiScaleIdx = xml->getIntAttribute ("uiScale", -1);
+    uiFullScreen = xml->getBoolAttribute ("uiFullScreen", false);
     scratchMode = xml->getBoolAttribute ("scratchMode", false);
 
     for (auto& c : ccMap) c = -1;
