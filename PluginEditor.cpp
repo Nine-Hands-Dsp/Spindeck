@@ -1755,15 +1755,22 @@ private:
 };
 
 //==============================================================================
-// pre-ecoute : bouton lecture / arret, morceau en cours, barre de position (clic = deplacement), volume
-class PreviewStrip : public Live
+// en-tete de la bibliotheque : LIBRARY, compteur, nouveau scan, dossier ; recherche, pre-ecoute, LOAD A / B
+class LibBar : public Live
 {
 public:
-    explicit PreviewStrip (SpinProcessor& p) : proc (p), btn ("PREVIEW", col::play)
+    explicit LibBar (SpinProcessor& p) : proc (p)
     {
-        addAndMakeVisible (btn);
-        btn.onDown = [this] { proc.togglePreviewSelected(); };
-        btn.isLit  = [this] { return proc.isPreviewing() && proc.previewPlaying.load(); };
+        search.setTextToShowWhenEmpty ("Search artist, title, folder...", col::faint);
+        search.setFont (fnt (14.0f));
+        search.setColour (juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
+        search.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
+        search.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
+        search.setColour (juce::TextEditor::textColourId, col::text);
+        search.onTextChange = [this] { proc.setFilter (search.getText()); ask(); };
+        search.onFocusLost = [this] { ask(); };
+        addAndMakeVisible (search);
+
         vol.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         vol.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
         vol.setRotaryParameters (juce::degreesToRadians (-140.0f), juce::degreesToRadians (140.0f), true);
@@ -1782,96 +1789,304 @@ public:
             x.writeTo (f);
         };
         addAndMakeVisible (vol);
+        setRepaintsOnMouseActivity (false);
     }
+
+    std::function<void()> onFolder;
+    int preferredHeight() const { return 70; }
 
     void tick()
     {
-        btn.tick();
-        btn.setText (proc.isPreviewing() && proc.previewPlaying.load() ? juce::String ("STOP") : juce::String ("PREVIEW"));
-        const int st = (proc.isPreviewing() ? 1 : 0) * 100000 + (int) (proc.previewPosSec.load() * 10.0);
+        bool dirty = false;
+        const int st = (proc.isPreviewing() ? 1 : 0) * 1000000 + (proc.previewPlaying.load() ? 1 : 0) * 500000
+                     + (int) (proc.previewPosSec.load() * 10.0) + (proc.isScanning() ? 7 : 0) + (int) proc.visible.size() * 13 + (int) proc.library.size() * 17;
         level = juce::jmax (proc.previewLevel.exchange (0.0f), level * 0.8f);
         const int lv = (int) (meterPos (level) * 30.0f);
-        if (st != drawnState || proc.previewFile() != drawnFile || lv != drawnLevel)
+        const auto dir = proc.getLibraryFolder().getFullPathName();
+        if (st != drawnState || lv != drawnLevel || proc.previewFile() != drawnFile || dir != drawnDir || search.hasKeyboardFocus (true) != drawnFocus)
         {
-            drawnState = st; drawnFile = proc.previewFile(); drawnLevel = lv;
-            ask();
+            drawnState = st; drawnLevel = lv; drawnFile = proc.previewFile(); drawnDir = dir; drawnFocus = search.hasKeyboardFocus (true);
+            dirty = true;
         }
+        if (dirty) ask();
+    }
+
+    void resized() override
+    {
+        hits.clear();
+        auto b = getLocalBounds();
+        auto r1 = b.removeFromTop (30);
+        titleTop = r1.removeFromLeft (120);
+        auto right = r1.removeFromRight (360);
+        addHit (right.removeFromRight (34).withSizeKeepingCentre (30, 30), idFolder);
+        right.removeFromRight (6);
+        addHit (right.removeFromRight (34).withSizeKeepingCentre (30, 30), idRescan);
+        right.removeFromRight (12);
+        countArea = right;
+        b.removeFromTop (6);
+        auto r2 = b.removeFromTop (34);
+        searchPill = r2.removeFromLeft (360);
+        search.setBounds (searchPill.withTrimmedLeft (32).reduced (0, 5));
+        r2.removeFromLeft (16);
+        addHit (r2.removeFromRight (60), idLoadB); r2.removeFromRight (6);
+        addHit (r2.removeFromRight (60), idLoadA); r2.removeFromRight (16);
+        card = r2;
+        auto c = r2.reduced (6, 4);
+        addHit (c.removeFromLeft (26), idPlay);
+        c.removeFromLeft (10);
+        vol.setBounds (c.removeFromRight (26));
+        c.removeFromRight (8);
+        timeArea = c.removeFromRight (96);
+        titleArea = c.removeFromLeft (juce::jmin (300, c.getWidth() / 2));
+        c.removeFromLeft (10);
+        barArea = c;
+        addHit (barArea, idSeek);
     }
 
     void paint (juce::Graphics& g) override
     {
         painted();
-        const bool on = proc.isPreviewing();
-        g.setFont (fnt (14.0f, true));
-        if (on)
+        g.setColour (col::text); g.setFont (fnt (15.0f, true));
+        g.drawText ("LIBRARY", titleTop, juce::Justification::centredLeft);
+        g.setColour (proc.isScanning() ? col::deckA : col::faint); g.setFont (fnt (12.5f));
+        g.drawText (countText(), countArea, juce::Justification::centredRight);
+        for (int id : { (int) idRescan, (int) idFolder })
         {
-            juce::String a, t;
-            spin::splitName (drawnFile.getFileNameWithoutExtension(), a, t);
-            g.setColour (col::text);
-            g.drawText (a.isNotEmpty() ? a + " - " + t : t, titleArea, juce::Justification::centredLeft, true);
+            const auto rr = hitRect (id).toFloat();
+            if (hover == id) { g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillEllipse (rr); }
+            icon (g, id == idFolder ? "folder" : "rescan", rr.getCentre(), 17, hover == id ? col::text : col::dim);
+        }
+        searchBox (g, searchPill.toFloat(), true, false);
+        auto cr = card.toFloat();
+        g.setColour (col::screen); g.fillRoundedRectangle (cr, cr.getHeight() * 0.5f);
+        g.setColour (col::line); g.drawRoundedRectangle (cr.reduced (0.5f), cr.getHeight() * 0.5f, 1);
+        playButton (g, hitRect (idPlay).toFloat(), true);
+        titleText (g, titleArea.toFloat(), false);
+        progressBar (g, barArea.toFloat(), 4, false);
+        g.setColour (col::dim); g.setFont (fnt (12.0f));
+        g.drawText (timeText(), timeArea, juce::Justification::centredRight);
+        loadPill (g, idLoadA, true, true);
+        loadPill (g, idLoadB, true, true);
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override { const int h = hitAt (e.getPosition()); if (h != hover) { hover = h; ask(); } }
+    void mouseExit (const juce::MouseEvent&) override   { if (hover != -1) { hover = -1; ask(); } }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        pressed = hitAt (e.getPosition());
+        if (pressed == idSeek) seek (e.x);
+        ask();
+    }
+    void mouseDrag (const juce::MouseEvent& e) override { if (pressed == idSeek) seek (e.x); }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        const int h = hitAt (e.getPosition());
+        if (h == pressed && h >= 0 && h != idSeek)
+            switch (h)
+            {
+                case idFolder: if (onFolder) onFolder(); break;
+                case idRescan: proc.rescanLibrary(); break;
+                case idLoadA:  proc.loadSelected (0); break;
+                case idLoadB:  proc.loadSelected (1); break;
+                case idPlay:   proc.togglePreviewSelected(); break;
+                default: break;
+            }
+        pressed = -1;
+        ask();
+    }
+
+private:
+    enum { idFolder, idRescan, idLoadA, idLoadB, idPlay, idSeek };
+    struct Hit { juce::Rectangle<int> r; int id; };
+    void addHit (juce::Rectangle<int> r, int id) { hits.push_back ({ r, id }); }
+    int hitAt (juce::Point<int> p) const { for (auto it = hits.rbegin(); it != hits.rend(); ++it) if (it->r.contains (p)) return it->id; return -1; }
+    juce::Rectangle<int> hitRect (int id) const { for (auto& h : hits) if (h.id == id) return h.r; return {}; }
+    void seek (int x) { proc.seekPreview ((double) (x - barArea.getX()) / juce::jmax (1, barArea.getWidth())); }
+
+    bool previewing() const { return proc.isPreviewing() && proc.previewPlaying.load(); }
+    juce::String countText() const
+    {
+        if (proc.isScanning()) return "Scanning...";
+        const int v = (int) proc.visible.size(), n = (int) proc.library.size();
+        return v == n ? juce::String (n) + " tracks" : juce::String (v) + " / " + juce::String (n) + " tracks";
+    }
+    juce::String previewTitle() const
+    {
+        if (! proc.isPreviewing()) return {};
+        juce::String a, t;
+        spin::splitName (drawnFile.getFileNameWithoutExtension(), a, t);
+        return a.isNotEmpty() ? a + " - " + t : t;
+    }
+    juce::String timeText() const
+    {
+        return proc.isPreviewing() ? formatTime (proc.previewPosSec.load()) + " / " + formatTime (proc.previewLenSec.load()) : juce::String ("--:-- / --:--");
+    }
+    float progress() const
+    {
+        const double len = proc.previewLenSec.load();
+        return proc.isPreviewing() && len > 0 ? (float) juce::jlimit (0.0, 1.0, proc.previewPosSec.load() / len) : 0.0f;
+    }
+
+    // ---------------------------------------------------------------- icones
+    void icon (juce::Graphics& g, const juce::String& which, juce::Point<float> c, float s, juce::Colour ink) const
+    {
+        const float lw = juce::jmax (1.4f, s * 0.09f);
+        const juce::PathStrokeType st (lw, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+        g.setColour (ink);
+        if (which == "folder")
+        {
+            juce::Path p;
+            p.startNewSubPath (c.x - s * 0.42f, c.y + s * 0.32f);
+            p.lineTo (c.x - s * 0.42f, c.y - s * 0.30f);
+            p.lineTo (c.x - s * 0.12f, c.y - s * 0.30f);
+            p.lineTo (c.x - s * 0.02f, c.y - s * 0.18f);
+            p.lineTo (c.x + s * 0.42f, c.y - s * 0.18f);
+            p.lineTo (c.x + s * 0.42f, c.y + s * 0.32f);
+            p.closeSubPath();
+            g.strokePath (p, st);
+        }
+        else if (which == "rescan")
+        {
+            juce::Path a;
+            a.addCentredArc (c.x, c.y, s * 0.34f, s * 0.34f, 0, juce::degreesToRadians (40.0f), juce::degreesToRadians (320.0f), true);
+            g.strokePath (a, st);
+            const float an = juce::degreesToRadians (40.0f);
+            const juce::Point<float> e (c.x + std::sin (an) * s * 0.34f, c.y - std::cos (an) * s * 0.34f);
+            juce::Path h; h.addTriangle (e.x - s * 0.16f, e.y - s * 0.10f, e.x + s * 0.12f, e.y - s * 0.16f, e.x + s * 0.02f, e.y + s * 0.14f);
+            g.fillPath (h);
+        }
+        else if (which == "search")
+        {
+            const float r = s * 0.26f;
+            g.drawEllipse (c.x - r - s * 0.08f, c.y - r - s * 0.08f, 2 * r, 2 * r, lw);
+            g.drawLine (c.x + r * 0.55f, c.y + r * 0.55f, c.x + s * 0.38f, c.y + s * 0.38f, lw * 1.2f);
+        }
+        else if (which == "play")
+        {
+            juce::Path p; p.addTriangle (c.x - s * 0.24f, c.y - s * 0.32f, c.x - s * 0.24f, c.y + s * 0.32f, c.x + s * 0.34f, c.y);
+            g.fillPath (p);
+        }
+        else if (which == "stop")
+            g.fillRoundedRectangle (c.x - s * 0.26f, c.y - s * 0.26f, s * 0.52f, s * 0.52f, s * 0.06f);
+        else if (which == "left" || which == "right")
+        {
+            const float d = which == "left" ? -1.0f : 1.0f;
+            juce::Path p;
+            p.startNewSubPath (c.x - d * s * 0.36f, c.y); p.lineTo (c.x + d * s * 0.36f, c.y);
+            p.startNewSubPath (c.x + d * s * 0.08f, c.y - s * 0.28f); p.lineTo (c.x + d * s * 0.36f, c.y); p.lineTo (c.x + d * s * 0.08f, c.y + s * 0.28f);
+            g.strokePath (p, st);
+        }
+    }
+
+    void searchBox (juce::Graphics& g, juce::Rectangle<float> r, bool pill, bool underline) const
+    {
+        const bool foc = search.hasKeyboardFocus (true);
+        if (underline)
+        {
+            g.setColour (foc ? col::deckA : col::line);
+            g.fillRect (r.getX(), r.getBottom() - (foc ? 2.0f : 1.0f), r.getWidth(), foc ? 2.0f : 1.0f);
         }
         else
         {
-            g.setColour (col::faint);
-            g.setFont (fnt (13.0f));
-            g.drawText ("Select a track and press PREVIEW, or click the play icon of a row", titleArea, juce::Justification::centredLeft, true);
+            const float rr = pill ? r.getHeight() * 0.5f : 6.0f;
+            g.setColour (col::screen); g.fillRoundedRectangle (r, rr);
+            g.setColour (foc ? col::deckA.withAlpha (0.8f) : col::line); g.drawRoundedRectangle (r.reduced (0.5f), rr, foc ? 1.5f : 1.0f);
         }
-        auto bar = barArea.toFloat();
-        g.setColour (col::screen); g.fillRoundedRectangle (bar, 3);
-        const double len = proc.previewLenSec.load();
-        const double pos = proc.previewPosSec.load();
-        if (on && len > 0)
+        icon (g, "search", { r.getX() + 17, r.getCentreY() }, 15, foc ? col::deckA : col::faint);
+    }
+
+    void loadPill (juce::Graphics& g, int id, bool solid, bool compact) const
+    {
+        auto r = hitRect (id).toFloat();
+        const int d = id == idLoadA ? 0 : 1;
+        const auto cc = col::deck (d);
+        const bool hov = hover == id, prs = pressed == id;
+        const float rr = compact ? 8.0f : r.getHeight() * 0.5f;
+        juce::Colour ink;
+        if (solid)
         {
-            const float w = (float) juce::jlimit (0.0, 1.0, pos / len) * bar.getWidth();
-            g.setColour (col::play.withAlpha (0.75f));
-            g.fillRoundedRectangle (bar.withWidth (w), 3);
-            g.setColour (juce::Colours::white);
-            g.fillRect (bar.getX() + w - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+            g.setColour (prs ? cc.darker (0.2f) : (hov ? cc.brighter (0.15f) : cc)); g.fillRoundedRectangle (r, rr);
+            ink = juce::Colours::black.withAlpha (0.85f);
         }
-        g.setColour (col::line); g.drawRoundedRectangle (bar, 3, 1);
-        auto lv = levelArea.toFloat();
-        g.setColour (col::screen); g.fillRoundedRectangle (lv, 2);
-        g.setColour (col::play);
-        g.fillRoundedRectangle (lv.withWidth (lv.getWidth() * juce::jlimit (0.0f, 1.0f, meterPos (level))), 2);
-        g.setColour (col::dim); g.setFont (fnt (13.0f));
-        g.drawText (on ? formatTime (pos) + " / " + formatTime (len) : juce::String ("--:-- / --:--"), timeArea, juce::Justification::centredRight);
-        g.setFont (fnt (11.0f, true));
-        g.drawText ("VOL", volLabel, juce::Justification::centredRight);
+        else
+        {
+            g.setColour (cc.withAlpha (hov ? 0.22f : 0.12f)); g.fillRoundedRectangle (r, rr);
+            g.setColour (cc.withAlpha (0.7f)); g.drawRoundedRectangle (r.reduced (0.5f), rr, 1.2f);
+            ink = cc;
+        }
+        g.setColour (ink);
+        if (compact)
+        {
+            g.setFont (fnt (16.0f, true));
+            if (d == 0)
+            {
+                icon (g, "left", { r.getX() + r.getWidth() * 0.32f, r.getCentreY() }, 14, ink);
+                g.setColour (ink); g.drawText ("A", r.withTrimmedLeft (r.getWidth() * 0.55f), juce::Justification::centredLeft);
+            }
+            else
+            {
+                g.drawText ("B", r.withTrimmedRight (r.getWidth() * 0.55f), juce::Justification::centredRight);
+                icon (g, "right", { r.getX() + r.getWidth() * 0.68f, r.getCentreY() }, 14, ink);
+            }
+            return;
+        }
+        g.setFont (fnt (13.0f, true));
+        const auto arrowC = d == 0 ? juce::Point<float> (r.getX() + 20, r.getCentreY()) : juce::Point<float> (r.getRight() - 20, r.getCentreY());
+        icon (g, d == 0 ? "left" : "right", arrowC, 14, ink);
+        g.setColour (ink);
+        g.drawText (d == 0 ? "LOAD A" : "LOAD B", d == 0 ? r.withTrimmedLeft (30) : r.withTrimmedRight (30), juce::Justification::centred);
     }
 
-    void resized() override
+    void playButton (juce::Graphics& g, juce::Rectangle<float> r, bool round) const
     {
-        auto b = getLocalBounds();
-        btn.setBounds (b.removeFromLeft (100).reduced (0, 1));
-        b.removeFromLeft (12);
-        vol.setBounds (b.removeFromRight (30));
-        volLabel = b.removeFromRight (32);
-        b.removeFromRight (8);
-        levelArea = b.removeFromRight (60).withSizeKeepingCentre (60, 6);
-        b.removeFromRight (12);
-        timeArea = b.removeFromRight (110);
-        b.removeFromRight (8);
-        const int bw = juce::jmax (100, b.getWidth() / 2);
-        barArea = b.removeFromRight (bw).withSizeKeepingCentre (bw, 10);
-        b.removeFromRight (12);
-        titleArea = b;
+        const bool on = previewing(), hov = hover == idPlay;
+        const float rr = round ? r.getHeight() * 0.5f : 8.0f;
+        if (on) { g.setColour (col::play.withAlpha (0.25f)); g.fillRoundedRectangle (r.expanded (3), rr + 3); }
+        g.setColour (on ? col::play : (hov ? col::play.withAlpha (0.30f) : col::play.withAlpha (0.16f)));
+        g.fillRoundedRectangle (r, rr);
+        if (! on) { g.setColour (col::play.withAlpha (0.8f)); g.drawRoundedRectangle (r.reduced (0.5f), rr, 1.2f); }
+        icon (g, on ? "stop" : "play", r.getCentre(), r.getHeight() * 0.62f, on ? juce::Colour (0xff0b0d10) : col::play);
     }
 
-    void mouseDown (const juce::MouseEvent& e) override { if (barArea.expanded (0, 8).contains (e.getPosition())) seek (e); }
-    void mouseDrag (const juce::MouseEvent& e) override { if (barArea.expanded (0, 12).contains (e.getMouseDownPosition())) seek (e); }
-
-private:
-    void seek (const juce::MouseEvent& e)
+    void progressBar (juce::Graphics& g, juce::Rectangle<float> r, float thick, bool knob) const
     {
-        proc.seekPreview ((double) (e.x - barArea.getX()) / juce::jmax (1, barArea.getWidth()));
+        auto t = r.withSizeKeepingCentre (r.getWidth(), thick);
+        g.setColour (col::screen); g.fillRoundedRectangle (t, thick * 0.5f);
+        g.setColour (col::line); g.drawRoundedRectangle (t, thick * 0.5f, 1.0f);
+        const float p = progress();
+        if (proc.isPreviewing())
+        {
+            juce::ColourGradient gr (col::play.darker (0.3f), t.getX(), 0, col::play, t.getX() + t.getWidth() * juce::jmax (0.05f, p), 0, false);
+            g.setGradientFill (gr);
+            g.fillRoundedRectangle (t.withWidth (juce::jmax (thick, t.getWidth() * p)), thick * 0.5f);
+            if (knob)
+            {
+                const float x = t.getX() + t.getWidth() * p;
+                g.setColour (juce::Colours::white); g.fillEllipse (x - 5, t.getCentreY() - 5, 10, 10);
+            }
+        }
+    }
+
+    void titleText (juce::Graphics& g, juce::Rectangle<float> r, bool caption) const
+    {
+        if (caption)
+        {
+            g.setColour (col::play); g.setFont (fnt (10.0f, true));
+            g.drawText ("PREVIEW", r.removeFromTop (r.getHeight() * 0.42f), juce::Justification::bottomLeft);
+        }
+        if (proc.isPreviewing()) { g.setColour (col::text); g.setFont (fnt (14.0f, true)); g.drawText (previewTitle(), r, juce::Justification::centredLeft, true); }
+        else { g.setColour (col::faint); g.setFont (fnt (13.0f)); g.drawText ("Preview: select a track and press play", r, juce::Justification::centredLeft, true); }
     }
 
     SpinProcessor& proc;
-    Pad btn;
+    juce::TextEditor search;
     juce::Slider vol;
-    juce::Rectangle<int> titleArea, barArea, timeArea, levelArea, volLabel;
-    int drawnState = -1, drawnLevel = -1;
+    std::vector<Hit> hits;
+    juce::Rectangle<int> titleTop, countArea, searchPill, titleArea, barArea, timeArea, card;
+    int hover = -1, pressed = -1, drawnState = -1, drawnLevel = -1;
+    bool drawnFocus = false;
     juce::File drawnFile;
+    juce::String drawnDir;
     float level = 0;
 };
 
@@ -1880,20 +2095,11 @@ private:
 class LibraryPanel : public juce::Component, private juce::TableListBoxModel
 {
 public:
-    explicit LibraryPanel (SpinProcessor& p) : proc (p), preview (p), folderBtn ("FOLDER", col::dim), rescanBtn ("RESCAN", col::dim),
-                                               loadA ("< LOAD A", col::deckA), loadB ("LOAD B >", col::deckB)
+    explicit LibraryPanel (SpinProcessor& p) : proc (p), bar (p)
     {
-        for (auto* c : std::initializer_list<juce::Component*> { &table, &search, &folderBtn, &rescanBtn, &loadA, &loadB, &preview })
-            addAndMakeVisible (c);
-        search.setTextToShowWhenEmpty ("Search artist, title, folder...", col::faint);
-        search.setFont (fnt (15.0f));
-        search.onTextChange = [this] { proc.setFilter (search.getText()); };
-        search.setIndents (8, 6);
-
-        folderBtn.onDown = [this] { chooseFolder(); };
-        rescanBtn.onDown = [this] { proc.rescanLibrary(); };
-        loadA.onDown = [this] { proc.loadSelected (0); };
-        loadB.onDown = [this] { proc.loadSelected (1); };
+        addAndMakeVisible (table);
+        addAndMakeVisible (bar);
+        bar.onFolder = [this] { chooseFolder(); };
 
         table.setModel (this);
         table.setRowHeight (24);
@@ -1912,7 +2118,9 @@ public:
 
     void tick()
     {
-        folderBtn.tick(); rescanBtn.tick(); loadA.tick(); loadB.tick(); preview.tick();
+        const int ph = bar.preferredHeight();
+        bar.tick();
+        if (bar.preferredHeight() != ph) resized();
         const juce::File pf = proc.isPreviewing() ? proc.previewFile() : juce::File();
         if (pf != shownPreview) { shownPreview = pf; table.repaint(); }
         if (proc.libraryVersion != shownVersion)
@@ -1935,32 +2143,12 @@ public:
         auto b = getLocalBounds().toFloat();
         g.setColour (col::panel); g.fillRoundedRectangle (b, col::radius);
         g.setColour (col::line); g.drawRoundedRectangle (b.reduced (0.5f), col::radius, 1.0f);
-        g.setColour (col::dim); g.setFont (fnt (13.0f));
-        const auto dir = proc.getLibraryFolder();
-        g.drawText (dir.getFullPathName(), pathArea, juce::Justification::centredLeft, true);
-        g.setColour (scanning ? col::deckA : col::faint);
-        g.drawText (scanning ? juce::String ("Scanning...") : juce::String ((int) proc.visible.size()) + " / " + juce::String ((int) proc.library.size()) + " tracks",
-                    countArea, juce::Justification::centredRight);
     }
 
     void resized() override
     {
         auto b = getLocalBounds().reduced (10);
-        auto bar = b.removeFromTop (32);
-        folderBtn.setBounds (bar.removeFromLeft (90));
-        bar.removeFromLeft (6);
-        rescanBtn.setBounds (bar.removeFromLeft (90));
-        bar.removeFromLeft (10);
-        loadB.setBounds (bar.removeFromRight (110));
-        bar.removeFromRight (6);
-        loadA.setBounds (bar.removeFromRight (110));
-        bar.removeFromRight (10);
-        countArea = bar.removeFromRight (130);
-        search.setBounds (bar.removeFromRight (360));
-        bar.removeFromRight (10);
-        pathArea = bar;
-        b.removeFromTop (6);
-        preview.setBounds (b.removeFromTop (28));
+        bar.setBounds (b.removeFromTop (bar.preferredHeight()));
         b.removeFromTop (6);
         table.setBounds (b);
     }
@@ -2054,114 +2242,345 @@ public:
 
 private:
     SpinProcessor& proc;
-    PreviewStrip preview;
+    LibBar bar;
     juce::TableListBox table;
-    juce::TextEditor search;
-    Pad folderBtn, rescanBtn, loadA, loadB;
     juce::File shownPreview;
     std::unique_ptr<juce::FileChooser> chooser;
-    juce::Rectangle<int> pathArea, countArea;
     int shownVersion = -1;
     bool scanning = false;
 };
 
 //==============================================================================
-// barre du haut : logo, platine detectee, mode scratch, VU master, menu
+// barre du haut : logo, platine detectee, resume des platines + heure, VU master, boutons SCRATCH / LIBRARY / FULL / MENU
 class TopBar : public Live
 {
 public:
-    explicit TopBar (SpinProcessor& p) : proc (p), scratch ("SCRATCH", col::deckA), menu ("MENU", col::dim), libBtn ("LIBRARY", col::dim), full ("FULL", col::dim)
+    explicit TopBar (SpinProcessor& p) : proc (p)
     {
         logo = col::bg.getBrightness() > 0.5f   // logo noir sur fond clair, blanc sur fond sombre
              ? juce::ImageCache::getFromMemory (BinaryData::nine_hands_logo_noir_png, BinaryData::nine_hands_logo_noir_pngSize)
              : juce::ImageCache::getFromMemory (BinaryData::nine_hands_logo_blanc_png, BinaryData::nine_hands_logo_blanc_pngSize);
-        for (auto* c : { &scratch, &menu, &libBtn, &full }) addAndMakeVisible (c);
-        full.onDown = [this] { if (auto* e = findParentComponentOfClass<SpinEditor>()) e->toggleFullScreen(); };
-        full.isLit  = [this] { auto* e = findParentComponentOfClass<SpinEditor>(); return e != nullptr && e->isFullScreen(); };
-        scratch.onDown = [this] { proc.post (0, cmdScratchMode, proc.scratchMode.load() ? 0.0 : 1.0); };
-        scratch.isLit  = [this] { return proc.scratchMode.load(); };
-        libBtn.onDown  = [this] { proc.libraryToggle = ! proc.libraryToggle.load(); };
-        libBtn.isLit   = [this] { return proc.libraryToggle.load(); };
+        setRepaintsOnMouseActivity (false);
     }
 
     std::function<void()> onMenu;
 
     void tick()
     {
-        scratch.tick(); menu.tick(); libBtn.tick(); full.tick();
+        bool dirty = false;
         const int act = proc.midiActivity.load();
         if (act != lastActivity) { lastActivity = act; blink = 6; }
         const bool on = blink > 0;
         if (blink > 0) --blink;
-        if (on != drawnOn) { drawnOn = on; ask(); }
-        level[0] = juce::jmax (proc.masterLevelL.exchange (0.0f), level[0] * 0.82f);
-        level[1] = juce::jmax (proc.masterLevelR.exchange (0.0f), level[1] * 0.82f);
-        for (auto& l : level) if (l < 0.0005f) l = 0.0f;
-        const int px = (int) (meterPos (level[0]) * 200) * 1000 + (int) (meterPos (level[1]) * 200);
-        const int ctl = proc.controller.load();
-        if (px != lastPx || ctl != lastCtl) { lastPx = px; lastCtl = ctl; ask(); }
+        if (on != drawnOn) { drawnOn = on; dirty = true; }
+        for (int c = 0; c < 2; ++c)
+        {
+            const float v = (c == 0 ? proc.masterLevelL : proc.masterLevelR).exchange (0.0f);
+            level[c] = juce::jmax (v, level[c] * 0.82f);
+            if (level[c] < 0.0005f) level[c] = 0.0f;
+            if (level[c] >= peak[c]) { peak[c] = level[c]; peakHold[c] = 30; }
+            else if (peakHold[c] > 0) --peakHold[c];
+            else peak[c] *= 0.93f;
+        }
+        const int px = (int) (meterPos (level[0]) * 200) * 1000 + (int) (meterPos (level[1]) * 200) + (int) (meterPos (peak[0]) * 50) * 7;
+        if (px != lastPx) { lastPx = px; dirty = true; }
+        const int st = (proc.scratchMode.load() ? 1 : 0) | (proc.libraryToggle.load() ? 2 : 0) | (isFull() ? 4 : 0) | (proc.controller.load() << 3);
+        if (st != lastState) { lastState = st; dirty = true; }
+        // etat des platines (styles 1 et 3) : BPM et temps restant a la seconde
+        int deckSig = 0;
+        for (int d = 0; d < 2; ++d)
+            if (auto t = proc.track (d))
+                deckSig = deckSig * 7919 + (int) (effBpm (t.get(), proc.view[d].rate.load()) * 10.0f) * 131
+                        + (int) ((t->lengthSeconds() - proc.view[d].pos.load() / t->sampleRate)) + (proc.view[d].playing.load() ? 1 : 0);
+        const int minute = juce::Time::getCurrentTime().getMinutes();
+        if (deckSig != lastDeckSig || minute != lastMinute) { lastDeckSig = deckSig; lastMinute = minute; dirty = true; }
+        if (dirty) ask();
     }
 
     void paint (juce::Graphics& g) override
     {
         painted();
-        g.fillAll (col::bg);
-        g.setColour (col::line); g.fillRect (0, getHeight() - 1, getWidth(), 1);
-        if (logo.isValid())
-        {
-            const float h = 18.0f, w = h * logo.getWidth() / logo.getHeight();
-            g.drawImage (logo, juce::Rectangle<float> (16, (getHeight() - h) * 0.5f, w, h), juce::RectanglePlacement::centred);
-            g.setColour (col::faint); g.fillRect (16 + w + 16, 12.0f, 1.0f, getHeight() - 24.0f);
-            g.setColour (col::text); g.setFont (fnt (20.0f, true));
-            g.drawText ("SPINDECK", juce::Rectangle<float> (16 + w + 32, 0, 200, (float) getHeight()), juce::Justification::centredLeft);
-        }
-        // controleur
-        auto pill = ctlArea.toFloat();
-        g.setColour (col::panel2); g.fillRoundedRectangle (pill, pill.getHeight() * 0.5f);
-        g.setColour (drawnOn ? col::play : col::faint);
-        g.fillEllipse (pill.getX() + 12, pill.getCentreY() - 5, 10, 10);
-        g.setColour (col::text); g.setFont (fnt (14.0f, true));
-        g.drawText (lastCtl == 0 ? "ION Discover DJ" : "MIDI Learn only", pill.withTrimmedLeft (30), juce::Justification::centredLeft);
-        // VU master
-        for (int c = 0; c < 2; ++c)
-        {
-            auto r = vuArea.toFloat().withHeight (6).translated (0, c * 10.0f);
-            g.setColour (juce::Colours::black); g.fillRoundedRectangle (r, 2);
-            const float v = meterPos (level[c]);
-            juce::ColourGradient grad (col::play, r.getX(), 0, col::red, r.getRight(), 0, false);
-            grad.addColour (0.75, col::cue);
-            g.setGradientFill (grad);
-            g.fillRoundedRectangle (r.withWidth (r.getWidth() * v), 2);
-        }
-        g.setColour (col::dim); g.setFont (fnt (11.0f, true));
-        g.drawText ("MASTER", vuArea.withY (vuArea.getY() - 16).withHeight (14), juce::Justification::centredLeft);
+        paintCombined (g);
     }
 
     void resized() override
     {
-        auto b = getLocalBounds().reduced (10, 8);
-        menu.setBounds (b.removeFromRight (80));
-        b.removeFromRight (8);
-        full.setBounds (b.removeFromRight (70));
-        b.removeFromRight (16);
-        vuArea = b.removeFromRight (180).withSizeKeepingCentre (180, 16).translated (0, 6);
-        b.removeFromRight (20);
-        libBtn.setBounds (b.removeFromRight (100));
-        b.removeFromRight (8);
-        scratch.setBounds (b.removeFromRight (100));
-        ctlArea = b.withSizeKeepingCentre (200, b.getHeight());
-        ctlArea.setX (b.getCentreX() - 60);
-        menu.onDown = [this] { if (onMenu) onMenu(); };
+        btn.clear();
+        const int H = getHeight();
+        auto r = getLocalBounds().reduced (12, 8);              // memes marges que les formes d'onde (12 px)
+        const int bw = 100;
+        auto seg = r.removeFromRight (4 * bw).withSizeKeepingCentre (4 * bw, 36);
+        for (int i = 0; i < 4; ++i) btn.push_back ({ seg.withX (seg.getX() + i * bw).withWidth (bw), i });
+        r.removeFromRight (26);
+        vuArea = r.removeFromRight (180).withSizeKeepingCentre (180, 18).translated (0, 7);
+        r.removeFromRight (26);
+        centreArea = juce::Rectangle<int> (468, 0, juce::jmax (300, r.getRight() - 468), H);
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override { setHover (hit (e.getPosition())); }
+    void mouseExit (const juce::MouseEvent&) override   { setHover (-1); }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu()) { if (onMenu) onMenu(); return; }
+        pressed = hit (e.getPosition());
+        ask();
+    }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        const int h = hit (e.getPosition());
+        if (h >= 0 && h == pressed) activate (h);
+        pressed = -1;
+        ask();
     }
 
 private:
+    struct Btn { juce::Rectangle<int> r; int id; };
+
+    bool isFull() const { auto* e = findParentComponentOfClass<SpinEditor>(); return e != nullptr && e->isFullScreen(); }
+    bool isLit (int id) const
+    {
+        switch (id) { case 0: return proc.scratchMode.load(); case 1: return proc.libraryToggle.load(); case 2: return isFull(); default: return false; }
+    }
+    static const char* label (int id) { static const char* L[4] = { "SCRATCH", "LIBRARY", "FULL", "MENU" }; return L[id]; }
+    juce::Colour accentOf (int id) const { return id == 0 ? col::deckA : (id == 1 ? col::play : (id == 2 ? col::cue : col::text)); }
+
+    int hit (juce::Point<int> p) const { for (auto& b : btn) if (b.r.contains (p)) return b.id; return -1; }
+    void setHover (int h) { if (h != hover) { hover = h; ask(); } }
+    void activate (int id)
+    {
+        switch (id)
+        {
+            case 0: proc.post (0, cmdScratchMode, proc.scratchMode.load() ? 0.0 : 1.0); break;
+            case 1: proc.libraryToggle = ! proc.libraryToggle.load(); break;
+            case 2: if (auto* e = findParentComponentOfClass<SpinEditor>()) e->toggleFullScreen(); break;
+            case 3: if (onMenu) onMenu(); break;
+            default: break;
+        }
+    }
+
+    // icones vectorielles (centre c, taille s)
+    void drawIcon (juce::Graphics& g, int id, juce::Point<float> c, float s, juce::Colour ink) const
+    {
+        const float lw = juce::jmax (1.4f, s * 0.09f);
+        const juce::PathStrokeType st (lw, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+        g.setColour (ink);
+        switch (id)
+        {
+            case 0:   // disque + fleches aller-retour
+            {
+                const float r = s * 0.30f;
+                g.drawEllipse (c.x - r, c.y - r, 2 * r, 2 * r, lw);
+                g.fillEllipse (c.x - r * 0.28f, c.y - r * 0.28f, r * 0.56f, r * 0.56f);
+                juce::Path a;
+                a.addCentredArc (c.x, c.y, s * 0.46f, s * 0.46f, 0, juce::degreesToRadians (-60.0f), juce::degreesToRadians (60.0f), true);
+                g.strokePath (a, st);
+                juce::Path b;
+                b.addCentredArc (c.x, c.y, s * 0.46f, s * 0.46f, 0, juce::degreesToRadians (120.0f), juce::degreesToRadians (240.0f), true);
+                g.strokePath (b, st);
+                break;
+            }
+            case 1:   // liste de morceaux
+            {
+                for (int i = 0; i < 3; ++i)
+                {
+                    const float y = c.y - s * 0.25f + i * s * 0.25f;
+                    g.fillEllipse (c.x - s * 0.36f, y - lw * 0.7f, lw * 1.4f, lw * 1.4f);
+                    g.drawLine (c.x - s * 0.18f, y, c.x + s * 0.38f, y, lw);
+                }
+                break;
+            }
+            case 2:   // plein ecran : 4 coins (vers l'interieur quand on est deja en plein ecran)
+            {
+                const bool in = isFull();
+                const float a = s * 0.36f, k = s * 0.16f;
+                for (int sx : { -1, 1 })
+                    for (int sy : { -1, 1 })
+                    {
+                        const juce::Point<float> corner (c.x + sx * a, c.y + sy * a);
+                        juce::Path p;
+                        if (! in) { p.startNewSubPath (corner.x, corner.y - sy * k); p.lineTo (corner); p.lineTo (corner.x - sx * k, corner.y); }
+                        else
+                        {
+                            const juce::Point<float> q (c.x + sx * (a - k), c.y + sy * (a - k));
+                            p.startNewSubPath (q.x, q.y + sy * k); p.lineTo (q); p.lineTo (q.x + sx * k, q.y);
+                        }
+                        g.strokePath (p, st);
+                    }
+                break;
+            }
+            default:  // menu : trois traits
+                for (int i = -1; i <= 1; ++i) g.drawLine (c.x - s * 0.34f, c.y + i * s * 0.24f, c.x + s * 0.34f, c.y + i * s * 0.24f, lw);
+                break;
+        }
+    }
+
+    // logo + separateur + SPINDECK ; renvoie l'abscisse de fin
+    float paintLogo (juce::Graphics& g, float x, float h, float lh = 18.0f, float gap = 16.0f) const
+    {
+        if (! logo.isValid()) return x;
+        g.setOpacity (1.0f);
+        const float lw = lh * logo.getWidth() / logo.getHeight();
+        g.drawImage (logo, juce::Rectangle<float> (x, (getHeight() - lh) * 0.5f, lw, lh), juce::RectanglePlacement::centred);
+        const float sepH = juce::jmin (getHeight() - 28.0f, lh * 1.6f);
+        g.setColour (col::faint); g.fillRect (x + lw + gap, (getHeight() - sepH) * 0.5f, 1.0f, sepH);
+        g.setColour (col::text); g.setFont (fnt (h, true));
+        const float tx = x + lw + gap * 2;
+        const float tw = juce::GlyphArrangement::getStringWidth (fnt (h, true), "SPINDECK");
+        g.drawText ("SPINDECK", juce::Rectangle<float> (tx, 0, tw + 4, (float) getHeight()), juce::Justification::centredLeft);
+        return tx + tw;
+    }
+
+    void paintController (juce::Graphics& g, juce::Rectangle<float> r, bool pill) const
+    {
+        if (pill)
+        {
+            g.setColour (col::panel2); g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+            g.setColour (col::line);   g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.0f);
+        }
+        const bool ion = lastState >> 3 == 0;
+        const auto dot = juce::Rectangle<float> (r.getX() + 12, r.getCentreY() - 4, 8, 8);
+        if (drawnOn) { g.setColour (col::play.withAlpha (0.35f)); g.fillEllipse (dot.expanded (4)); }
+        g.setColour (drawnOn ? col::play : (ion ? col::play.withAlpha (0.45f) : col::faint));
+        g.fillEllipse (dot);
+        g.setColour (col::text); g.setFont (fnt (13.5f, true));
+        g.drawText (ion ? "ION Discover DJ" : "MIDI Learn only", r.withTrimmedLeft (28), juce::Justification::centredLeft);
+    }
+
+    // VU stereo : deux barres fines en degrade + memoire de crete + valeur en dB
+    void paintMeter (juce::Graphics& g, juce::Rectangle<float> r, bool segments, bool showDb) const
+    {
+        const float bh = segments ? (r.getHeight() - 3) * 0.5f : 4.0f;
+        const float top = segments ? r.getY() : r.getCentreY() - 6.0f;
+        const float textW = showDb ? 52.0f : 0.0f;
+        auto bars = r.withTrimmedRight (textW);
+        for (int c = 0; c < 2; ++c)
+        {
+            auto b = juce::Rectangle<float> (bars.getX(), top + c * (bh + 3), bars.getWidth(), bh);
+            const float v = meterPos (level[c]);
+            if (segments)
+            {
+                const int n = 24;
+                const float sw = b.getWidth() / n;
+                for (int i = 0; i < n; ++i)
+                {
+                    const float f = (i + 0.5f) / n;
+                    const auto cc = f > 0.92f ? col::red : (f > 0.75f ? col::cue : col::play);
+                    g.setColour (f <= v ? cc : cc.withAlpha (0.10f));
+                    g.fillRoundedRectangle (b.getX() + i * sw + 1, b.getY(), sw - 2, b.getHeight(), 1.0f);
+                }
+            }
+            else
+            {
+                g.setColour (juce::Colours::black.withAlpha (0.6f)); g.fillRoundedRectangle (b, bh * 0.5f);
+                juce::ColourGradient grad (col::play, b.getX(), 0, col::red, b.getRight(), 0, false);
+                grad.addColour (0.72, col::play); grad.addColour (0.86, col::cue);
+                g.setGradientFill (grad);
+                g.fillRoundedRectangle (b.withWidth (b.getWidth() * v), bh * 0.5f);
+            }
+            const float pk = meterPos (peak[c]);
+            if (pk > 0.01f) { g.setColour (juce::Colours::white.withAlpha (0.85f)); g.fillRect (b.getX() + b.getWidth() * pk - 1.0f, b.getY(), 1.5f, b.getHeight()); }
+        }
+        if (showDb)
+        {
+            const float pkv = juce::jmax (peak[0], peak[1]);
+            g.setColour (pkv > 0.89f ? col::red : col::dim); g.setFont (fnt (12.0f, true));
+            g.drawText (pkv < 0.001f ? juce::String ("-inf") : juce::String (juce::Decibels::gainToDecibels (pkv), 1) + " dB",
+                        r.withLeft (r.getRight() - textW + 4), juce::Justification::centredRight);
+        }
+    }
+
+    // resume des deux platines : lettre, BPM, temps restant
+    void paintDecks (juce::Graphics& g, juce::Rectangle<float> r) const
+    {
+        const float half = r.getWidth() * 0.5f;
+        for (int d = 0; d < 2; ++d)
+        {
+            auto a = juce::Rectangle<float> (r.getX() + d * half, r.getY(), half, r.getHeight()).reduced (10, 0);
+            const auto t = proc.track (d);
+            const auto cc = col::deck (d);
+            auto badge = a.removeFromLeft (22).withSizeKeepingCentre (22, 22);
+            g.setColour (cc); g.fillRoundedRectangle (badge, 5);
+            g.setColour (juce::Colours::black); g.setFont (fnt (13.0f, true));
+            g.drawText (d == 0 ? "A" : "B", badge, juce::Justification::centred);
+            a.removeFromLeft (10);
+            const bool pl = proc.view[d].playing.load();
+            g.setColour (pl ? col::play : col::faint);
+            juce::Path ic;
+            const float y = a.getCentreY();
+            if (pl) ic.addTriangle (a.getX(), y - 5, a.getX(), y + 5, a.getX() + 8, y);
+            else    { ic.addRectangle (a.getX(), y - 5, 3, 10); ic.addRectangle (a.getX() + 5, y - 5, 3, 10); }
+            g.fillPath (ic);
+            a.removeFromLeft (16);
+            const float bpm = effBpm (t.get(), proc.view[d].rate.load());
+            g.setColour (col::text); g.setFont (fnt (16.0f, true));
+            g.drawText (bpm > 0 ? juce::String (bpm, 1) : juce::String ("--.-"), a.removeFromLeft (52), juce::Justification::centredLeft);
+            g.setColour (col::dim); g.setFont (fnt (11.0f, true));
+            g.drawText ("BPM", a.removeFromLeft (34), juce::Justification::centredLeft);
+            if (t != nullptr)
+            {
+                const double rem = juce::jmax (0.0, t->lengthSeconds() - proc.view[d].pos.load() / t->sampleRate);
+                g.setColour (rem < 30.0 && pl ? col::red : col::text); g.setFont (fnt (15.0f, true));
+                g.drawText ("-" + formatTime (rem), a, juce::Justification::centredLeft);
+            }
+        }
+    }
+
+    juce::String clock() const { return juce::Time::getCurrentTime().formatted ("%H:%M"); }
+
+    // ------------------------------------------------------------------ dessin
+    void paintCombined (juce::Graphics& g)
+    {
+        juce::ColourGradient bg (col::panel, 0, 0, col::bg, 0, (float) getHeight(), false);
+        g.setGradientFill (bg); g.fillAll();
+        g.setColour (col::line); g.fillRect (0, getHeight() - 1, getWidth(), 1);
+        // logo et nom reduits de 30 %, espaces reguliers entre les blocs
+        const float endLogo = paintLogo (g, 12, 14.0f, 12.6f, 13.0f);
+        paintController (g, { endLogo + 30, 10, (float) centreArea.getX() - endLogo - 44, 32 }, false);
+        // bandeau des platines + heure
+        auto c = centreArea.toFloat().reduced (0, 9);
+        g.setColour (col::screen); g.fillRoundedRectangle (c, 8);
+        g.setColour (col::line); g.drawRoundedRectangle (c, 8, 1);
+        auto clk = c.removeFromRight (66);
+        g.setColour (col::text); g.setFont (fnt (15.0f, true));
+        g.drawText (clock(), clk, juce::Justification::centred);
+        g.setColour (col::line); g.fillRect (clk.getX(), c.getY() + 7, 1.0f, c.getHeight() - 14);
+        paintDecks (g, c);
+        // VU master + boutons segmentes
+        g.setColour (col::dim); g.setFont (fnt (11.0f, true));
+        g.drawText ("MASTER", vuArea.toFloat().withY (vuArea.getY() - 12.0f).withHeight (12), juce::Justification::centredLeft);
+        paintMeter (g, vuArea.toFloat(), false, true);
+        if (btn.empty()) return;
+        auto seg = btn.front().r.getUnion (btn.back().r).toFloat();
+        g.setColour (col::panel2); g.fillRoundedRectangle (seg, 10);
+        g.setColour (col::line); g.drawRoundedRectangle (seg.reduced (0.5f), 10, 1);
+        for (auto& b : btn)
+        {
+            auto r = b.r.toFloat().reduced (3);
+            const bool lit = isLit (b.id), hov = hover == b.id;
+            const auto ac = accentOf (b.id);
+            if (lit)
+            {
+                g.setColour (ac.withAlpha (0.20f)); g.fillRoundedRectangle (r, 8);
+                g.setColour (ac.withAlpha (0.55f)); g.drawRoundedRectangle (r, 8, 1);
+            }
+            else if (hov || pressed == b.id) { g.setColour (juce::Colours::white.withAlpha (pressed == b.id ? 0.10f : 0.05f)); g.fillRoundedRectangle (r, 8); }
+            if (b.id > 0) { g.setColour (col::line); g.fillRect ((float) b.r.getX(), seg.getY() + 9, 1.0f, seg.getHeight() - 18); }
+            const auto ink = lit ? ac : (hov ? col::text : col::dim);
+            drawIcon (g, b.id, { r.getX() + 18, r.getCentreY() }, 17, ink);
+            g.setColour (ink); g.setFont (fnt (12.0f, true));
+            g.drawText (label (b.id), r.withTrimmedLeft (31), juce::Justification::centredLeft);
+        }
+    }
+
     SpinProcessor& proc;
-    Pad scratch, menu, libBtn, full;
     juce::Image logo;
-    juce::Rectangle<int> ctlArea, vuArea;
-    int lastActivity = 0, blink = 0, lastPx = -1, lastCtl = -1;
+    std::vector<Btn> btn;
+    juce::Rectangle<int> vuArea, centreArea;
+    int hover = -1, pressed = -1;
+    int lastActivity = 0, blink = 0, lastPx = -1, lastState = -1, lastDeckSig = -1, lastMinute = -1;
     bool drawnOn = false;
-    float level[2] {};
+    float level[2] {}, peak[2] {};
+    int peakHold[2] {};
 };
 
 //==============================================================================

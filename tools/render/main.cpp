@@ -317,6 +317,26 @@ int main (int argc, char** argv)
         se->toggleFullScreen();
         std::cout << "fullscreen off -> " << ed->getWidth() << "x" << ed->getHeight() << std::endl;
     }
+    // barre du haut et en-tete de la bibliotheque (pre-ecoute en cours)
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+        ed->setSize (1600, 900);
+        if (! proc->view[0].playing.load()) run (1, { juce::MidiMessage::noteOn (1, 0x4A, (juce::uint8) 127) });
+        proc->selected = 0;
+        if (! proc->isPreviewing()) proc->togglePreviewSelected();
+        run (300);
+        for (int i = 0; i < 6; ++i) { run (4); mm->runDispatchLoopUntil (35); }
+        juce::PNGImageFormat png;
+        auto full = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+        auto ff = out.getChildFile ("topbar_full_ui.png");
+        ff.deleteFile();
+        if (auto os = ff.createOutputStream()) png.writeImageToStream (full, *os);
+        auto lib = ed->createComponentSnapshot ({ 0, 636, 1600, 264 }, true, 1.25f);
+        auto fl = out.getChildFile ("libbar_final.png");
+        fl.deleteFile();
+        if (auto os = fl.createOutputStream()) png.writeImageToStream (lib, *os);
+        proc->stopPreview();
+    }
     proc.reset();
     return 0;
 }

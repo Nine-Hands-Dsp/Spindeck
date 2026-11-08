@@ -60,7 +60,7 @@ def content(lang):
           ("p", "La Discover DJ n'a pas de carte son : le son sort par l'interface audio de l'ordinateur, sur la sortie master stéréo. "
                 "Ces étapes sont rappelées dans le plugin par <b>MENU > Reaper setup help</b>."),
           ("p", "Au premier lancement, la bibliothèque affiche le dossier <b>Musique</b> de votre session. Choisissez votre dossier de morceaux "
-                "avec le bouton <b>FOLDER</b> : il est mémorisé pour toutes les instances du plugin."),
+                "avec l'icône <b>dossier</b> en haut à droite de la bibliothèque : il est mémorisé pour toutes les instances du plugin."),
           ("pb",)]
 
     # 3 -------------------------------------------------------------------------------------------------
@@ -80,7 +80,7 @@ def content(lang):
                      ["11", "Plage du pitch : 4 / 8 / 16 / 50 %", "24", "MASTER : volume général"],
                      ["12", "SYNC et REV", "25", "Bibliothèque de morceaux"],
                      ["13", "PITCH - / PITCH +", "26", "FULL : plein écran"],
-                     ["", "", "27", "Pré-écoute de la bibliothèque"]],
+                     ["28", "Résumé des platines (lecture, BPM, temps restant) et heure", "27", "Pré-écoute de la bibliothèque"]],
            [9, 78, 9, None], {"small": True}),
           ("pb",)]
 
@@ -165,31 +165,31 @@ def content(lang):
 
     # 7 -------------------------------------------------------------------------------------------------
     b += [("h1", "7. Bibliothèque et chargement"),
-          ("img", "library.png", 174, None),
-          ("bullets", ["<b>FOLDER</b> : choisit le dossier de musique ; ses sous-dossiers sont aussi parcourus (jusqu'à 20 000 morceaux).",
-                       "<b>RESCAN</b> : relit le dossier après avoir ajouté des fichiers.",
-                       "<b>Recherche</b> : tapez un ou plusieurs mots ; ils sont cherchés dans l'artiste, le titre et le nom du dossier.",
+          ("img", "library.png", 160, None),
+          ("bullets", ["<b>Icône dossier</b> (en haut à droite) : choisit le dossier de musique ; ses sous-dossiers sont aussi parcourus (jusqu'à 20 000 morceaux).",
+                       "<b>Icône flèche circulaire</b> : relit le dossier après avoir ajouté des fichiers. Le nombre de morceaux est affiché à côté.",
+                       "<b>Recherche</b> (champ avec la loupe, à gauche) : tapez un ou plusieurs mots ; ils sont cherchés dans l'artiste, le titre et le nom du dossier.",
                        "<b>Colonnes</b> : numéro, artiste, titre, BPM, format, dossier. Le BPM apparaît une fois le morceau analysé, et il est mémorisé pour la prochaine fois.",
                        "<b>LIBRARY</b> (barre du haut, ou bouton bibliothèque de la platine) : bibliothèque en plein écran, formes d'onde gardées en haut."]),
           ("h2", "Pré-écoute"),
           ("p", "La pré-écoute fait entendre un morceau de la bibliothèque sans le charger sur une platine. Le fichier est lu directement depuis le disque, sans analyse, et démarre aussitôt."),
-          ("bullets", ["<b>PREVIEW</b> : lance la pré-écoute du morceau sélectionné ; le bouton devient <b>STOP</b> pendant la lecture.",
+          ("p", "Le lecteur de pré-écoute occupe le centre de la deuxième ligne, entre la recherche et les boutons A / B."),
+          ("bullets", ["<b>Bouton rond vert</b> : lance la pré-écoute du morceau sélectionné ; il affiche un carré (arrêt) pendant la lecture.",
                        "<b>Icône lecture</b> au début de chaque ligne : lance la pré-écoute de cette ligne, ou l'arrête si elle joue déjà. La ligne en cours affiche un petit égaliseur vert.",
                        "<b>Suivi de la sélection</b> : pendant une pré-écoute, choisir une autre ligne (souris ou encodeur BROWSE de la platine) passe directement à ce morceau.",
-                       "<b>Barre de position</b> : cliquez ou faites glisser pour aller plus loin dans le morceau. Le temps écoulé, la durée et un petit VU-mètre sont affichés à droite.",
-                       "<b>VOL</b> : volume de la pré-écoute (double-clic : 70 %), mémorisé."]),
+                       "<b>Barre de position</b> : cliquez ou faites glisser pour aller plus loin dans le morceau. Le temps écoulé et la durée sont affichés à droite.",
+                       "<b>Petit potard vert</b> au bout du lecteur : volume de la pré-écoute (double-clic : 70 %), mémorisé."]),
           ("p", "<b>Sortie de la pré-écoute</b> (MENU > Preview output) : <b>Master (mixed in)</b>, par défaut, mélange la pré-écoute au son principal. C'est la seule possibilité avec la Discover DJ de base, qui n'a pas de sortie casque : "
                 "baissez le crossfader ou les volumes avant d'écouter devant un public. <b>Outputs 3-4 (Preview bus)</b> envoie la pré-écoute sur une deuxième sortie stéréo du plugin, à router dans Reaper "
                 "vers une autre sortie de votre interface audio (un casque par exemple) : activez les sorties 3-4 du plugin dans le routage de la fenêtre FX."),
           ("h2", "Charger un morceau"),
-          ("bullets", ["Sélectionnez une ligne puis <b>LOAD A</b> ou <b>LOAD B</b> (table de mixage ou bibliothèque).",
+          ("bullets", ["Sélectionnez une ligne puis <b>LOAD A</b> / <b>LOAD B</b> de la table de mixage, ou les boutons <b>← A</b> / <b>B →</b> de la bibliothèque.",
                        "<b>Double-clic</b> sur une ligne : chargement sur la platine A si elle est à l'arrêt, sinon sur la B.",
                        "<b>Glisser-déposer</b> une ligne de la bibliothèque, ou un fichier depuis l'Explorateur Windows / le Finder, sur une platine.",
                        "Depuis la Discover DJ : encodeur <b>BROWSE</b> pour choisir, boutons <b>LOAD</b> pour charger."]),
           ("p", "Par sécurité, une platine <b>doit être à l'arrêt</b> pour recevoir un morceau. Au chargement, le morceau est décodé en mémoire puis analysé "
                 "(BPM et grille de temps) ; l'en-tête affiche « Loading and analysing... » pendant quelques secondes. "
-                "Formats : WAV, AIFF, FLAC, OGG Vorbis et MP3, jusqu'à 60 minutes par morceau."),
-          ("p", "Les morceaux chargés et leurs points de cue sont enregistrés avec le projet Reaper et rechargés à son ouverture."),
+                "Formats : WAV, AIFF, FLAC, OGG Vorbis et MP3, jusqu'à 60 minutes par morceau. Les morceaux chargés et leurs points de cue sont enregistrés avec le projet Reaper."),
           ("pb",)]
 
     # 8 -------------------------------------------------------------------------------------------------
@@ -253,7 +253,7 @@ def content(lang):
                      ["Refresh controller LEDs", "Renvoie l'état des LED à la platine."],
                      ["MIDI Learn", "Assignation par défaut : enregistrer, charger, effacer (voir chapitre 8)."],
                      ["Skin", "Midnight, Neon Club, Amber Mono, Pro Red / Blue."],
-                     ["Choose music folder...", "Même rôle que le bouton FOLDER."],
+                     ["Choose music folder...", "Même rôle que l'icône dossier de la bibliothèque."],
                      ["Preview output", "Pré-écoute mélangée au master, ou sur les sorties 3-4 du plugin."],
                      ["Full screen", "Plein écran (comme le bouton FULL)."],
                      ["Reaper setup help", "Rappel des réglages de la piste Reaper."],
