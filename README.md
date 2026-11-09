@@ -3,6 +3,13 @@
 Two-deck DJ software inside a VST3 instrument for Reaper, made for the **ION Discover DJ** controller.
 Windows and macOS (VST3, plus AU on macOS).
 
+<p align="center">
+  <a href="https://github.com/Nine-Hands-Dsp/Spindeck/releases/latest/download/Spindeck-VST3-Windows.zip"><img alt="Télécharger pour Windows" src="https://img.shields.io/badge/%E2%AC%87%20T%C3%A9l%C3%A9charger-Windows-0078D6?style=for-the-badge"></a>
+  <a href="https://github.com/Nine-Hands-Dsp/Spindeck/releases/latest/download/Spindeck-VST3-macOS.zip"><img alt="Télécharger pour macOS" src="https://img.shields.io/badge/%E2%AC%87%20T%C3%A9l%C3%A9charger-macOS-111111?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <br>
+  <a href="https://github.com/Nine-Hands-Dsp/Spindeck/releases/latest"><img alt="Dernière version" src="https://img.shields.io/github/v/release/Nine-Hands-Dsp/Spindeck?label=derni%C3%A8re%20version&color=919496"></a>
+</p>
+
 ## What it does
 
 - Two decks with scrolling waveforms (10 s, beat grid, cue marker), track overview (click to seek), spinning platters.
