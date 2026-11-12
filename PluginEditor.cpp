@@ -251,6 +251,9 @@ public:
 
 //==============================================================================
 // potard / fader relie a un parametre, avec MIDI Learn au clic droit
+static juce::PopupMenu spinControlMenu (SpinProcessor& p, int param);
+static bool spinHandleLearn (int r, SpinProcessor& p);
+
 class ParamSlider : public juce::Slider
 {
 public:
@@ -272,21 +275,11 @@ public:
     void mouseDown (const juce::MouseEvent& e) override
     {
         if (! e.mods.isPopupMenu()) { juce::Slider::mouseDown (e); return; }
-        juce::PopupMenu m;
-        int cc = -1;
-        for (int i = 0; i < 128; ++i) if (proc.ccMap[i].load() == param) cc = i;
-        m.addSectionHeader (kParamNames[param]);
-        m.addItem (1, "MIDI Learn", true, proc.learnTarget.load() == param);
-        m.addItem (2, cc >= 0 ? "Forget MIDI (CC " + juce::String (cc) + ")" : juce::String ("Forget MIDI"), cc >= 0);
-        m.addItem (3, "Reset");
+        auto m = spinControlMenu (proc, param);
         juce::Component::SafePointer<ParamSlider> safe (this);
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [safe] (int r)
         {
-            if (safe == nullptr) return;
-            auto& p = safe->proc;
-            if (r == 1) p.learnTarget = p.learnTarget.load() == safe->param ? -1 : safe->param;
-            if (r == 2) for (auto& x : p.ccMap) if (x.load() == safe->param) x = -1;
-            if (r == 3) safe->setValue (safe->getDoubleClickReturnValue(), juce::sendNotificationSync);
+            if (safe != nullptr) spinHandleLearn (r, safe->proc);
         });
     }
 
@@ -2688,6 +2681,7 @@ public:
     void mouseDown (const juce::MouseEvent& e) override { if (e.mods.isPopupMenu()) showMenu(); }
 
     void showMenu();
+    juce::PopupMenu buildMenu();
 
 private:
     SpinProcessor& proc;
@@ -2708,48 +2702,76 @@ static bool isDefaultSize (const SpinEditor* ed)
     return ed != nullptr && std::abs ((float) ed->getWidth() / (float) kRefW - kDefaultScale) < 0.02f;
 }
 
-void SpinContent::showMenu()
+static juce::String spinAssign (SpinProcessor& p, int param)
+{
+    for (int i = 0; i < 128; ++i) if (p.ccMap[i].load() == param) return "CC " + juce::String (i);
+    return "not assigned";
+}
+
+// menu d'une commande (tronc commun) : en-tete, MIDI Learn, Clear MIDI, Cancel MIDI learn
+static juce::PopupMenu spinControlMenu (SpinProcessor& p, int param)
+{
+    juce::PopupMenu m;
+    const juce::String name (spin::kParamNames[param]);
+    const auto a = spinAssign (p, param);
+    m.addSectionHeader (name + "  |  MIDI: " + a);
+    m.addItem (1000 + param, "MIDI Learn: " + name, true, p.learnTarget.load() == param);
+    m.addItem (1100 + param, "Clear MIDI: " + name, a != "not assigned");
+    m.addItem (1200, "Cancel MIDI learn", p.learnTarget.load() >= 0);
+    return m;
+}
+
+static bool spinHandleLearn (int r, SpinProcessor& p)
+{
+    if (r >= 1000 && r < 1000 + spin::numParams) { p.learnTarget = p.learnTarget.load() == r - 1000 ? -1 : r - 1000; return true; }
+    if (r >= 1100 && r < 1100 + spin::numParams) { for (auto& x : p.ccMap) if (x.load() == r - 1100) x = -1; return true; }
+    if (r == 1200) { p.learnTarget = -1; return true; }
+    return false;
+}
+
+juce::PopupMenu SpinContent::buildMenu()
 {
     auto* ed = findParentComponentOfClass<SpinEditor>();
+    if (ed == nullptr) ed = dynamic_cast<SpinEditor*> (getParentComponent());
     juce::PopupMenu m, ctl, jog, size, defSizes;
+    m.addSectionHeader ("Spindeck  |  DJ decks  v" JucePlugin_VersionString);
+    m.addItem (16, "Choose music folder...");
+    m.addSeparator();
     ctl.addItem (10, "ION Discover DJ", true, proc.controller.load() == 0);
     ctl.addItem (11, "None (MIDI Learn only)", true, proc.controller.load() == 1);
     m.addSubMenu ("Controller", ctl);
-    m.addItem (12, "Invert crossfader (controller)", true, proc.invertXf.load());
+    m.addItem (12, "Invert crossfader", true, proc.invertXf.load());
     const char* sens[4] = { "25 %", "50 %  (default)", "75 %", "100 %" };
     for (int i = 0; i < 4; ++i) jog.addItem (40 + i, sens[i], true, proc.jogSens.load() == i);
-    m.addSubMenu ("Scratch sensitivity (controller)", jog);
+    m.addSubMenu ("Scratch sensitivity", jog);
     m.addItem (15, "Refresh controller LEDs");
-    juce::PopupMenu ml;
-    const int nCur = proc.mappingCount(), nDef = proc.defaultMappingCount();
-    ml.addSectionHeader ("This project: " + juce::String (nCur) + " assignment(s)  |  default: " + juce::String (nDef));
-    ml.addItem (70, "Save as default (recalled in every new project)", nCur > 0);
-    ml.addItem (71, "Load default", nDef > 0);
-    ml.addItem (72, "Clear (this project)", nCur > 0);
-    ml.addItem (73, "Delete default", nDef > 0);
-    m.addSubMenu ("MIDI Learn", ml);
-    juce::PopupMenu skins;
-    const char* skinNames[4] = { "Midnight", "Neon Club", "Amber Mono", "Pro Red / Blue" };
-    for (int i = 0; i < 4; ++i) skins.addItem (30 + i, skinNames[i], true, proc.theme.load() == i);
-    m.addSubMenu ("Skin", skins);
-    juce::PopupMenu colM, glowM;
-    colM.addItem (80, "Deck A colour...");
-    colM.addItem (81, "Deck B colour...");
-    colM.addItem (82, "Strobe light colour...");
-    const char* glowNames[4] = { "Off", "Low", "Medium (design)", "High" };
-    const float glowVals[4] = { 0.0f, 0.5f, 1.0f, 1.6f };
-    for (int i = 0; i < 4; ++i) glowM.addItem (83 + i, glowNames[i], true, std::abs (col::glowScale - glowVals[i]) < 0.01f);
-    colM.addSubMenu ("Glow", glowM);
-    colM.addSeparator();
-    colM.addItem (87, "Reset colours to the skin");
-    m.addSubMenu ("Colours & glow", colM);
-    m.addSeparator();
-    m.addItem (16, "Choose music folder...");
     juce::PopupMenu pout;
     pout.addItem (50, "Master (mixed in)", true, proc.previewOutput.load() == 0);
     pout.addItem (51, "Outputs 3-4 (Preview bus)", true, proc.previewOutput.load() == 1);
     m.addSubMenu ("Preview output", pout);
     m.addItem (17, "Reaper setup help");
+    m.addSeparator();
+
+    // MIDI (tronc commun ; pas de footswitch ni de presets usine sur Spindeck)
+    juce::PopupMenu midi;
+    const int nCur = proc.mappingCount(), nDef = proc.defaultMappingCount();
+    midi.addSectionHeader ("MIDI Learn");
+    for (int i = 0; i < spin::numParams; ++i)
+        midi.addItem (1000 + i, juce::String ("Learn: ") + spin::kParamNames[i] + "  (" + spinAssign (proc, i) + ")", true, proc.learnTarget.load() == i);
+    midi.addSeparator();
+    midi.addItem (1200, "Cancel MIDI learn", proc.learnTarget.load() >= 0);
+    midi.addItem (72, "Clear all MIDI assignments", nCur > 0);
+    midi.addSeparator();
+    midi.addItem (70, "Save assignments as default (every new project)", nCur > 0);
+    midi.addItem (71, "Load default assignments", nDef > 0);
+    midi.addItem (73, "Delete default assignments", nDef > 0);
+    m.addSubMenu ("MIDI", midi);
+    m.addSeparator();
+
+    juce::PopupMenu skins;
+    const char* skinNames[4] = { "Midnight", "Neon Club", "Amber Mono", "Pro Red / Blue" };
+    for (int i = 0; i < 4; ++i) skins.addItem (30 + i, skinNames[i], true, proc.theme.load() == i);
+    m.addSubMenu ("Skin", skins);
 
     const int cur = ed != nullptr ? ed->getScaleIndex() : -1;
     const int def = WigaWindowSize::defaultIndex (SpinProcessor::settingsName(), SpinEditor::numSizes);
@@ -2762,15 +2784,32 @@ void SpinContent::showMenu()
     }
     size.addSeparator();
     size.addSubMenu ("Default size (new windows)", defSizes);
-    m.addSeparator();
-    m.addItem (60, "Full screen", ed != nullptr, ed != nullptr && ed->isFullScreen());
     m.addSubMenu ("Plugin size", size, ed == nullptr || ! ed->isFullScreen());
+    m.addItem (60, "Full screen", ed != nullptr, ed != nullptr && ed->isFullScreen());
 
+    juce::PopupMenu colM, glowM;
+    colM.addItem (80, "Deck A colour...");
+    colM.addItem (81, "Deck B colour...");
+    colM.addItem (82, "Strobe light colour...");
+    const char* glowNames[4] = { "Off", "Low", "Medium (design)", "High" };
+    const float glowVals[4] = { 0.0f, 0.5f, 1.0f, 1.6f };
+    for (int i = 0; i < 4; ++i) glowM.addItem (83 + i, glowNames[i], true, std::abs (col::glowScale - glowVals[i]) < 0.01f);
+    colM.addSubMenu ("Glow", glowM);
+    colM.addSeparator();
+    colM.addItem (87, "Reset colours to the skin");
+    m.addSubMenu ("Glow intensity & Colours", colM);
+    return m;
+}
+
+void SpinContent::showMenu()
+{
+    auto m = buildMenu();
     juce::Component::SafePointer<SpinContent> safe (this);
     m.showMenuAsync (juce::PopupMenu::Options(), [safe] (int r)
     {
         if (safe == nullptr || r == 0) return;
         auto& p = safe->proc;
+        if (spinHandleLearn (r, p)) return;
         auto saveSetting = [] (const char* key, int v)
         {
             auto f = WigaWindowSize::file (SpinProcessor::settingsName());
@@ -2855,6 +2894,8 @@ void SpinEditor::normalLimits()
     const int minW = (int) std::lround (kRefW * kDefaultScale);          // jamais plus petite que la taille par defaut
     const int maxW = 2400;
     setResizeLimits (minW, (int) std::lround ((double) minW * kH / kW), maxW, (int) std::lround ((double) maxW * kH / kW));
+    hostLock.setLimits (minW, (int) std::lround ((double) minW * kH / kW), maxW, (int) std::lround ((double) maxW * kH / kW));
+    hostLock.enforce();
 }
 
 void SpinEditor::toggleFullScreen()
@@ -2909,6 +2950,8 @@ void SpinEditor::fitToScreen()
     const int w = juce::jmin (availW, (int) std::floor (availH * (double) kW / kH));
     const int h = (int) std::lround ((double) w * kH / kW);
     setResizeLimits (juce::jmin (640, w), juce::jmin (360, h), juce::jmax (7680, w), juce::jmax (4320, h));
+    hostLock.setLimits (juce::jmin (640, w), juce::jmin (360, h), juce::jmax (7680, w), juce::jmax (4320, h));
+    hostLock.enforce();
     setSize (w, h);
     fsArea = area;
     placeTicks = fsCanMove ? 8 : 0;
@@ -3000,6 +3043,7 @@ void SpinEditor::askRepaint (juce::Component& c)
 
 void SpinEditor::timerCallback()
 {
+    if (juce::Time::getMillisecondCounter() - lastLockCheck > 1000) { lastLockCheck = juce::Time::getMillisecondCounter(); hostLock.track (*this); }
     const auto now = juce::Time::getMillisecondCounter();
     if ((void*) getPeer() != lastPeer || now - lastRendererCheck >= 1000) useSoftwareRenderer();
     content->tick();
@@ -3043,7 +3087,7 @@ void SpinEditor::paint (juce::Graphics& g)
     notePainted();
 }
 
-void SpinEditor::parentHierarchyChanged() { useSoftwareRenderer(); }
+void SpinEditor::parentHierarchyChanged() { useSoftwareRenderer(); hostLock.track (*this); }
 
 void SpinEditor::visibilityChanged()
 {
@@ -3079,4 +3123,10 @@ void SpinEditor::applyScaleIndex (int idx)
     const float s = idx == 0 ? kDefaultScale : kScales[idx];
     const int w = (int) std::lround (kRefW * s);
     setSize (w, (int) std::lround ((double) w * kH / kW));
+    hostLock.enforce();
+}
+
+juce::PopupMenu SpinEditor::buildContextMenu (int learnIdx)
+{
+    return learnIdx >= 0 ? spinControlMenu (proc, learnIdx) : content->buildMenu();
 }

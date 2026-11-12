@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
+#include "NineHandsWindow.h"
 
 class SpinContent;
 
@@ -18,6 +19,8 @@ public:
     void visibilityChanged() override;
 
     static constexpr int numSizes = 3;
+    NineHandsWindow::HostLock hostLock;     // fenetre du DAW : jamais sous 100 % ni au-dela de 150 % (plein ecran a part)
+    juce::PopupMenu buildContextMenu (int learnIdx = -1);   // menu clic droit (aussi pour l'outil de controle des menus)
     int  getScaleIndex() const;
     void setScaleIndex (int idx);           // -1 = taille par defaut choisie
     void applyScaleIndex (int idx);
@@ -51,7 +54,7 @@ private:
     juce::Rectangle<int> fsArea;
     juce::Point<int> savedRootPhys;
     bool haveSavedRoot = false;
-    juce::uint32 lastFsCheck = 0;
+    juce::uint32 lastFsCheck = 0, lastLockCheck = 0;
     juce::uint32 lastRendererCheck = 0, lastPaintMs = 0, repaintAskedMs = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpinEditor)
 };

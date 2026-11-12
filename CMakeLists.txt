@@ -6,7 +6,7 @@ if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "" FORCE)
 endif()
 
-project(Spindeck VERSION 1.0.0)
+project(Spindeck VERSION 1.1.0)
 
 include(FetchContent)
 FetchContent_Declare(JUCE
@@ -45,6 +45,17 @@ target_sources(Spindeck PRIVATE
   NativeWindow.cpp
   Track.cpp)
 
+
+# verrou de taille de la fenetre du DAW (jamais sous 60 %, jamais au-dela de 150 %)
+if(APPLE)
+  target_sources(Spindeck PRIVATE WindowMinSize.mm)
+  target_link_libraries(Spindeck PRIVATE "-framework Cocoa")
+else()
+  target_sources(Spindeck PRIVATE WindowMinSize.cpp)
+endif()
+if(WIN32)
+  target_link_libraries(Spindeck PRIVATE comctl32 user32)
+endif()
 target_compile_definitions(Spindeck PUBLIC
   JUCE_WEB_BROWSER=0
   JUCE_USE_CURL=0
